@@ -20,7 +20,7 @@ contract RequestKycStatusTest is BaseTest {
 
         vm.startPrank(deployer);
         MockAutomationConsumer(automation).setMinBalance(AUTOMATION_MIN_BALANCE);
-        LinkTokenInterface(link).approve(address(compliant), compliant.getFee());
+        LinkTokenInterface(link).approve(address(compliant), compliant.getAutomatedFee());
         vm.stopPrank();
     }
 
@@ -36,7 +36,7 @@ contract RequestKycStatusTest is BaseTest {
         vm.recordLogs();
 
         vm.prank(deployer);
-        compliant.requestKycStatus(user);
+        uint256 fee = compliant.requestKycStatus(user, false); // false for no automation
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -59,5 +59,41 @@ contract RequestKycStatusTest is BaseTest {
         assertEq(requestIdAfter, expectedRequestId);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
+        assertEq(fee, compliant.getFee());
+    }
+
+    function test_compliant_requestKycStatus_automated() public {
+        bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
+        assertEq(requestIdBefore, 0);
+
+        uint256 linkBalanceBefore = LinkTokenInterface(link).balanceOf(deployer);
+
+        vm.recordLogs();
+
+        vm.prank(deployer);
+        uint256 fee = compliant.requestKycStatus(user, true); // true for automation
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
+        bytes32 emittedRequestId;
+        address emittedUser;
+
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == eventSignature) {
+                emittedRequestId = logs[i].topics[1];
+                emittedUser = address(uint160(uint256(logs[i].topics[2])));
+            }
+        }
+
+        uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(deployer);
+
+        bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
+        bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
+
+        assertEq(linkBalanceAfter + compliant.getAutomatedFee(), linkBalanceBefore);
+        assertEq(requestIdAfter, expectedRequestId);
+        assertEq(emittedRequestId, expectedRequestId);
+        assertEq(user, emittedUser);
+        assertEq(fee, compliant.getAutomatedFee());
     }
 }

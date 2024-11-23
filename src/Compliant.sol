@@ -98,35 +98,25 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve
-    /// @notice the user transferAndCall'ing their LINK to this address will request their KYC status
     /// @dev if the data decodes to a true boolean, Chainlink Automation will be used to execute
     /// compliantly-restricted logic as soon as a request is fulfilled (if the user is compliant)
-    function onTokenTransfer(address sender, uint256 amount, bytes calldata data) external {
+    function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external {
         if (msg.sender != address(i_link)) revert Compliant__OnlyLinkToken();
 
-        // bool isAutomatedRequest = abi.decode(data, (bool));
-        (bool isAutomatedRequest, address user) = abi.decode(data, (bool, address));
+        (address user, bool isAutomatedRequest) = abi.decode(data, (address, bool));
 
-        uint256 fees = _handleFees(isAutomatedRequest);
+        uint256 fees = _handleFees(isAutomatedRequest, true);
         if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(amount, fees);
 
-        _requestKycStatus(sender, isAutomatedRequest);
+        _requestKycStatus(user, isAutomatedRequest);
     }
 
     /// @notice anyone can call this function to request the KYC status of their address
     /// @notice msg.sender must approve address(this) on LINK token contract
-    function requestKycStatus(address user) external {
-        uint256 fee = _handleFees(false);
-        _transferFromLink(fee);
-        _requestKycStatus(user, false);
-    }
-
-    /// @notice requests the KYC status of the msg.sender and then performs compliant-restricted logic
-    /// if the msg.sender is eligible
-    function requestKycStatusAndPerform() external {
-        uint256 fee = _handleFees(true);
-        _transferFromLink(fee);
-        _requestKycStatus(msg.sender, true);
+    function requestKycStatus(address user, bool isAutomated) external returns (uint256) {
+        uint256 fee = _handleFees(isAutomated, false);
+        _requestKycStatus(user, isAutomated);
+        return fee;
     }
 
     /// @notice example function that can only be called by a compliant user
@@ -214,7 +204,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @dev calculates fees in LINK and handles approvals
     /// @param isAutomated Whether to include automation fees
-    function _handleFees(bool isAutomated) internal returns (uint256) {
+    function _handleFees(bool isAutomated, bool isOnTokenTransfer) internal returns (uint256) {
         uint256 compliantFeeInLink = _calculateCompliantFee();
         uint256 everestFeeInLink = i_everest.oraclePayment();
 
@@ -222,23 +212,25 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
         uint256 totalFee = compliantFeeInLink + everestFeeInLink;
 
+        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+
         if (isAutomated) {
-            uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
             totalFee += automationFeeInLink;
 
             i_link.approve(address(i_automation), automationFeeInLink);
-            // @audit-review this probably needs to happen AFTER transferFrom
+        }
+
+        if (!isOnTokenTransfer) {
+            i_link.transferFrom(msg.sender, address(this), totalFee);
+        }
+
+        if (isAutomated) {
             i_automation.addFunds(i_claSubId, automationFeeInLink);
         }
 
         i_link.approve(address(i_everest), everestFeeInLink);
 
         return totalFee;
-    }
-
-    /// @dev transfers link amount from msg.sender to address(this)
-    function _transferFromLink(uint256 amount) internal {
-        i_link.transferFrom(msg.sender, address(this), amount);
     }
 
     /// @dev reverts if the user is not compliant
