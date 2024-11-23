@@ -44,7 +44,7 @@ contract OnTokenTransferTest is BaseTest {
         bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
         assertEq(requestIdBefore, 0);
 
-        uint256 amount = compliant.getAutomatedFee();
+        uint256 amount = compliant.getFeeWithAutomation();
         /// @dev requesting the kyc status of user
         /// @dev true because we are performing automation
         bytes memory data = abi.encode(user, true);

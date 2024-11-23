@@ -11,7 +11,7 @@ contract RequestKycStatusTest is BaseTest {
     function setUp() public override {
         BaseTest.setUp();
 
-        uint256 approvalAmount = compliant.getAutomatedFee() + compliant.getFee();
+        uint256 approvalAmount = compliant.getFeeWithAutomation() + compliant.getFee();
 
         vm.prank(user);
         LinkTokenInterface(link).approve(address(compliant), approvalAmount);
@@ -83,10 +83,10 @@ contract RequestKycStatusTest is BaseTest {
         bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
-        assertEq(linkBalanceAfter + compliant.getAutomatedFee(), linkBalanceBefore);
+        assertEq(linkBalanceAfter + compliant.getFeeWithAutomation(), linkBalanceBefore);
         assertEq(requestIdAfter, expectedRequestId);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
-        assertEq(fee, compliant.getAutomatedFee());
+        assertEq(fee, compliant.getFeeWithAutomation());
     }
 }

@@ -271,7 +271,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return compliantFeeInLink + everestFeeInLink;
     }
 
-    function getAutomatedFee() public view returns (uint256) {
+    function getFeeWithAutomation() external view returns (uint256) {
         uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
 
         return getFee() + automationFeeInLink;
