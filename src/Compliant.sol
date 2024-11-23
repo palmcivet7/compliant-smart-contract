@@ -9,13 +9,16 @@ import {AutomationBase} from "@chainlink/contracts/src/v0.8/automation/Automatio
 import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
-contract Compliant is ILogAutomation, AutomationBase, Ownable {
+contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
+    error Compliant__OnlyLinkToken();
+    error Compliant__InsufficientLinkTransferAmount(uint256 insufficientAmount, uint256 requiredAmount);
     error Compliant__NonCompliantUser(address nonCompliantUser);
     error Compliant__PendingRequestExists(address pendingRequestedUser);
     error Compliant__OnlyForwarder();
@@ -59,9 +62,9 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
     /// @dev emitted when KYC status of an address is requested
-    event KYCStatusRequested(bytes32 everestRequestId, address user);
+    event KYCStatusRequested(bytes32 indexed everestRequestId, address indexed user);
     /// @dev emitted when KYC status of an address is fulfilled
-    event KYCStatusRequestFulfilled(address user, bool isCompliant);
+    event KYCStatusRequestFulfilled(bytes32 indexed everestRequestId, address indexed user, bool indexed isCompliant);
 
     /// @notice included for demo purposes
     event CompliantCheckPassed();
@@ -94,17 +97,34 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
     /*//////////////////////////////////////////////////////////////
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
+    /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve
+    /// @notice the user transferAndCall'ing their LINK to this address will request their KYC status
+    /// @dev if the data decodes to a true boolean, Chainlink Automation will be used to execute
+    /// compliantly-restricted logic as soon as a request is fulfilled (if the user is compliant)
+    function onTokenTransfer(address sender, uint256 amount, bytes calldata data) external {
+        if (msg.sender != address(i_link)) revert Compliant__OnlyLinkToken();
+
+        // bool isAutomatedRequest = abi.decode(data, (bool));
+        (bool isAutomatedRequest, address user) = abi.decode(data, (bool, address));
+
+        uint256 fees = _handleFeesOnTokenTransfer(isAutomatedRequest);
+        if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(amount, fees);
+
+        _requestKycStatus(sender, isAutomatedRequest);
+    }
+
     /// @notice anyone can call this function to request the KYC status of their address
     /// @notice msg.sender must approve address(this) on LINK token contract
     function requestKycStatus(address user) external {
-        _requestKycStatus(user);
+        _handleBasicFees();
+        _requestKycStatus(user, false);
     }
 
     /// @notice requests the KYC status of the msg.sender and then performs compliant-restricted logic
     /// if the msg.sender is eligible
     function requestKycStatusAndPerform() external {
-        _setPendingRequest(msg.sender);
-        _requestKycStatus(msg.sender);
+        _handleAutomatedFees();
+        _requestKycStatus(msg.sender, true);
     }
 
     /// @notice example function that can only be called by a compliant user
@@ -128,14 +148,15 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
         bytes32 eventSignature = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
 
         if (log.source == address(i_everest) && log.topics[0] == eventSignature) {
+            bytes32 requestId = log.topics[1];
             address requestedAddress = address(uint160(uint256(log.topics[2])));
-            (, IEverestConsumer.Status kycStatus,) = abi.decode(log.data, (bytes32, IEverestConsumer.Status, uint40));
+            (, IEverestConsumer.Status kycStatus,) = abi.decode(log.data, (address, IEverestConsumer.Status, uint40));
 
             bool isCompliant;
             if (kycStatus == IEverestConsumer.Status.KYCUser) isCompliant = true;
 
             if (s_pendingRequests[requestedAddress]) {
-                performData = abi.encode(requestedAddress, isCompliant);
+                performData = abi.encode(requestId, requestedAddress, isCompliant);
                 upkeepNeeded = true;
             }
         }
@@ -146,11 +167,11 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
     /// @param performData encoded bytes contains address of requested user and bool isCompliant
     function performUpkeep(bytes calldata performData) external {
         if (msg.sender != i_forwarder) revert Compliant__OnlyForwarder();
-        (address user, bool isCompliant) = abi.decode(performData, (address, bool));
+        (bytes32 requestId, address user, bool isCompliant) = abi.decode(performData, (bytes32, address, bool));
 
         s_pendingRequests[user] = false;
 
-        emit KYCStatusRequestFulfilled(user, isCompliant);
+        emit KYCStatusRequestFulfilled(requestId, user, isCompliant);
 
         if (isCompliant) {
             // compliant-restricted logic goes here
@@ -171,8 +192,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @dev requests the kyc status of the user
-    function _requestKycStatus(address user) internal {
-        _handleLinkFees();
+    function _requestKycStatus(address user, bool isAutomated) internal {
+        if (isAutomated) _setPendingRequest(user);
 
         i_everest.requestStatus(user);
 
@@ -189,19 +210,59 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
         s_pendingRequests[user] = true;
     }
 
-    /// @dev calculates fees in LINK needed to make KYC request and automate response
-    /// @dev transfers fee amount in LINK from the msg.sender
-    function _handleLinkFees() internal {
+    /// @dev calculates fees in LINK and handles transfers and approvals
+    /// @param isAutomated Whether to include automation fees
+    function _handleFees(bool isAutomated) internal {
         uint256 compliantFeeInLink = _calculateCompliantFee();
         uint256 everestFeeInLink = i_everest.oraclePayment();
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
 
         s_compliantFeesInLink += compliantFeeInLink;
 
-        i_link.transferFrom(msg.sender, address(this), compliantFeeInLink + everestFeeInLink + automationFeeInLink);
-        i_link.approve(address(i_automation), automationFeeInLink);
-        i_automation.addFunds(i_claSubId, automationFeeInLink);
+        uint256 totalFee = compliantFeeInLink + everestFeeInLink;
+
+        if (isAutomated) {
+            uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+            totalFee += automationFeeInLink;
+
+            i_link.approve(address(i_automation), automationFeeInLink);
+            i_automation.addFunds(i_claSubId, automationFeeInLink);
+        }
+
+        i_link.transferFrom(msg.sender, address(this), totalFee);
         i_link.approve(address(i_everest), everestFeeInLink);
+    }
+
+    /// @dev calculates fees in LINK and handles transfers and approvals
+    /// @param isAutomated Whether to include automation fees
+    function _handleFeesOnTokenTransfer(bool isAutomated) internal returns (uint256) {
+        uint256 compliantFeeInLink = _calculateCompliantFee();
+        uint256 everestFeeInLink = i_everest.oraclePayment();
+
+        s_compliantFeesInLink += compliantFeeInLink;
+
+        uint256 totalFee = compliantFeeInLink + everestFeeInLink;
+
+        if (isAutomated) {
+            uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+            totalFee += automationFeeInLink;
+
+            i_link.approve(address(i_automation), automationFeeInLink);
+            i_automation.addFunds(i_claSubId, automationFeeInLink);
+        }
+
+        i_link.approve(address(i_everest), everestFeeInLink);
+
+        return totalFee;
+    }
+
+    /// @dev calculates fees in LINK needed to make KYC request
+    function _handleBasicFees() internal {
+        _handleFees(false);
+    }
+
+    /// @dev calculates fees in LINK needed to make KYC request and automate response
+    function _handleAutomatedFees() internal {
+        _handleFees(true);
     }
 
     /// @dev reverts if the user is not compliant
@@ -233,5 +294,46 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable {
     /// @return isCompliant True if the user has completed KYC
     function getIsCompliant(address user) external view returns (bool isCompliant) {
         return _isCompliant(user);
+    }
+
+    function getFee() public view returns (uint256) {
+        uint256 compliantFeeInLink = _calculateCompliantFee();
+        uint256 everestFeeInLink = i_everest.oraclePayment();
+
+        return compliantFeeInLink + everestFeeInLink;
+    }
+
+    function getAutomatedFee() public view returns (uint256) {
+        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+
+        return getFee() + automationFeeInLink;
+    }
+
+    function getEverest() external view returns (IEverestConsumer) {
+        return i_everest;
+    }
+
+    function getLink() external view returns (LinkTokenInterface) {
+        return i_link;
+    }
+
+    function getPriceFeed() external view returns (AggregatorV3Interface) {
+        return i_priceFeed;
+    }
+
+    function getAutomation() external view returns (IAutomationRegistryConsumer) {
+        return i_automation;
+    }
+
+    function getForwarder() external view returns (address) {
+        return i_forwarder;
+    }
+
+    function getClaSubId() external view returns (uint256) {
+        return i_claSubId;
+    }
+
+    function getLastEverestRequestId(address user) external view returns (bytes32) {
+        return s_lastEverestRequestId[user];
     }
 }
