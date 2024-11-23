@@ -2,26 +2,19 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, Vm} from "./BaseTest.t.sol";
-import {MockAutomationConsumer} from "../mocks/MockAutomationConsumer.sol";
-import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
+import {BaseTest, Vm, LinkTokenInterface} from "./BaseTest.t.sol";
 
 contract RequestKycStatusTest is BaseTest {
-    /*//////////////////////////////////////////////////////////////
-                               VARIABLES
-    //////////////////////////////////////////////////////////////*/
-    uint96 constant AUTOMATION_MIN_BALANCE = 1e17;
-
     /*//////////////////////////////////////////////////////////////
                                  SETUP
     //////////////////////////////////////////////////////////////*/
     function setUp() public override {
         BaseTest.setUp();
 
-        vm.startPrank(deployer);
-        MockAutomationConsumer(automation).setMinBalance(AUTOMATION_MIN_BALANCE);
-        LinkTokenInterface(link).approve(address(compliant), compliant.getAutomatedFee());
-        vm.stopPrank();
+        uint256 approvalAmount = compliant.getAutomatedFee() + compliant.getFee();
+
+        vm.prank(user);
+        LinkTokenInterface(link).approve(address(compliant), approvalAmount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -31,11 +24,11 @@ contract RequestKycStatusTest is BaseTest {
         bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
         assertEq(requestIdBefore, 0);
 
-        uint256 linkBalanceBefore = LinkTokenInterface(link).balanceOf(deployer);
+        uint256 linkBalanceBefore = LinkTokenInterface(link).balanceOf(user);
 
         vm.recordLogs();
 
-        vm.prank(deployer);
+        vm.prank(user);
         uint256 fee = compliant.requestKycStatus(user, false); // false for no automation
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -50,7 +43,7 @@ contract RequestKycStatusTest is BaseTest {
             }
         }
 
-        uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(deployer);
+        uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(user);
 
         bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
@@ -66,11 +59,11 @@ contract RequestKycStatusTest is BaseTest {
         bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
         assertEq(requestIdBefore, 0);
 
-        uint256 linkBalanceBefore = LinkTokenInterface(link).balanceOf(deployer);
+        uint256 linkBalanceBefore = LinkTokenInterface(link).balanceOf(user);
 
         vm.recordLogs();
 
-        vm.prank(deployer);
+        vm.prank(user);
         uint256 fee = compliant.requestKycStatus(user, true); // true for automation
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -85,7 +78,7 @@ contract RequestKycStatusTest is BaseTest {
             }
         }
 
-        uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(deployer);
+        uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(user);
 
         bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
