@@ -304,4 +304,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     function getLastEverestRequestId(address user) external view returns (bytes32) {
         return s_lastEverestRequestId[user];
     }
+
+    function getIncrementedValue() external view returns (uint256) {
+        return s_incrementedValue;
+    }
 }
