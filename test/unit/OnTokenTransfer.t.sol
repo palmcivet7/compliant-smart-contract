@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, Vm, LinkTokenInterface} from "./BaseTest.t.sol";
+import {BaseTest, Vm, LinkTokenInterface} from "../BaseTest.t.sol";
 import {MockLinkToken} from "../mocks/MockLinkToken.sol";
 
 contract OnTokenTransferTest is BaseTest {

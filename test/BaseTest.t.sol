@@ -5,8 +5,8 @@ pragma solidity 0.8.24;
 import {Test, Vm} from "forge-std/Test.sol";
 import {Compliant} from "../../src/Compliant.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
-import {MockLinkToken} from "../mocks/MockLinkToken.sol";
-import {MockAutomationConsumer} from "../mocks/MockAutomationConsumer.sol";
+import {MockLinkToken} from "./mocks/MockLinkToken.sol";
+import {MockAutomationConsumer} from "./mocks/MockAutomationConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
 contract BaseTest is Test {
