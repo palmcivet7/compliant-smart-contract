@@ -107,7 +107,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         // bool isAutomatedRequest = abi.decode(data, (bool));
         (bool isAutomatedRequest, address user) = abi.decode(data, (bool, address));
 
-        uint256 fees = _handleFeesOnTokenTransfer(isAutomatedRequest);
+        uint256 fees = _handleFees(isAutomatedRequest);
         if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(amount, fees);
 
         _requestKycStatus(sender, isAutomatedRequest);
@@ -116,14 +116,16 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @notice anyone can call this function to request the KYC status of their address
     /// @notice msg.sender must approve address(this) on LINK token contract
     function requestKycStatus(address user) external {
-        _handleBasicFees();
+        uint256 fee = _handleFees(false);
+        _transferFromLink(fee);
         _requestKycStatus(user, false);
     }
 
     /// @notice requests the KYC status of the msg.sender and then performs compliant-restricted logic
     /// if the msg.sender is eligible
     function requestKycStatusAndPerform() external {
-        _handleAutomatedFees();
+        uint256 fee = _handleFees(true);
+        _transferFromLink(fee);
         _requestKycStatus(msg.sender, true);
     }
 
@@ -210,9 +212,9 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         s_pendingRequests[user] = true;
     }
 
-    /// @dev calculates fees in LINK and handles transfers and approvals
+    /// @dev calculates fees in LINK and handles approvals
     /// @param isAutomated Whether to include automation fees
-    function _handleFees(bool isAutomated) internal {
+    function _handleFees(bool isAutomated) internal returns (uint256) {
         uint256 compliantFeeInLink = _calculateCompliantFee();
         uint256 everestFeeInLink = i_everest.oraclePayment();
 
@@ -225,28 +227,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
             totalFee += automationFeeInLink;
 
             i_link.approve(address(i_automation), automationFeeInLink);
-            i_automation.addFunds(i_claSubId, automationFeeInLink);
-        }
-
-        i_link.transferFrom(msg.sender, address(this), totalFee);
-        i_link.approve(address(i_everest), everestFeeInLink);
-    }
-
-    /// @dev calculates fees in LINK and handles transfers and approvals
-    /// @param isAutomated Whether to include automation fees
-    function _handleFeesOnTokenTransfer(bool isAutomated) internal returns (uint256) {
-        uint256 compliantFeeInLink = _calculateCompliantFee();
-        uint256 everestFeeInLink = i_everest.oraclePayment();
-
-        s_compliantFeesInLink += compliantFeeInLink;
-
-        uint256 totalFee = compliantFeeInLink + everestFeeInLink;
-
-        if (isAutomated) {
-            uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
-            totalFee += automationFeeInLink;
-
-            i_link.approve(address(i_automation), automationFeeInLink);
+            // @audit-review this probably needs to happen AFTER transferFrom
             i_automation.addFunds(i_claSubId, automationFeeInLink);
         }
 
@@ -255,14 +236,9 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return totalFee;
     }
 
-    /// @dev calculates fees in LINK needed to make KYC request
-    function _handleBasicFees() internal {
-        _handleFees(false);
-    }
-
-    /// @dev calculates fees in LINK needed to make KYC request and automate response
-    function _handleAutomatedFees() internal {
-        _handleFees(true);
+    /// @dev transfers link amount from msg.sender to address(this)
+    function _transferFromLink(uint256 amount) internal {
+        i_link.transferFrom(msg.sender, address(this), amount);
     }
 
     /// @dev reverts if the user is not compliant

@@ -31,6 +31,8 @@ contract RequestKycStatusTest is BaseTest {
         bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
         assertEq(requestIdBefore, 0);
 
+        uint256 linkBalanceBefore = LinkTokenInterface(link).balanceOf(deployer);
+
         vm.recordLogs();
 
         vm.prank(deployer);
@@ -48,9 +50,12 @@ contract RequestKycStatusTest is BaseTest {
             }
         }
 
+        uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(deployer);
+
         bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
+        assertEq(linkBalanceAfter + compliant.getFee(), linkBalanceBefore);
         assertEq(requestIdAfter, expectedRequestId);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);

@@ -30,7 +30,7 @@ contract BaseTest is Test {
         HelperConfig config = new HelperConfig();
         (everest, link, priceFeed, automation) = config.activeNetworkConfig();
 
-        /// @dev mints total supply to msg.sender
+        /// @dev mints total supply to msg.sender (deployer)
         MockLinkToken(link).initializeMockLinkToken();
 
         compliant = new Compliant(everest, link, priceFeed, automation, forwarder, claSubId);
