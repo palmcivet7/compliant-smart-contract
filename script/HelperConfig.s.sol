@@ -53,7 +53,7 @@ contract HelperConfig is Script {
         MockEverestConsumer mockEverest = new MockEverestConsumer();
         MockLinkToken mockLink = new MockLinkToken();
         MockV3Aggregator mockPriceFeed = new MockV3Aggregator(DECIMALS, INITIAL_ANSWER);
-        MockAutomationConsumer mockAutomation = new MockAutomationConsumer();
+        MockAutomationConsumer mockAutomation = new MockAutomationConsumer(address(mockLink));
 
         return NetworkConfig({
             everest: address(mockEverest),

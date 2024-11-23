@@ -4,12 +4,17 @@ pragma solidity 0.8.24;
 
 import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
+import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
 contract MockAutomationConsumer is IAutomationRegistryConsumer {
+    LinkTokenInterface internal immutable i_link;
+
     uint96 balance;
     uint96 minBalance;
 
-    constructor() {}
+    constructor(address link) {
+        i_link = LinkTokenInterface(link);
+    }
 
     function setMinBalance(uint96 _minBalance) external {
         minBalance = _minBalance;
@@ -31,7 +36,9 @@ contract MockAutomationConsumer is IAutomationRegistryConsumer {
 
     function updateCheckData(uint256 id, bytes calldata newCheckData) external {}
 
-    function addFunds(uint256 id, uint96 amount) external override {}
+    function addFunds(uint256, /* id */ uint96 amount) external override {
+        i_link.transferFrom(msg.sender, address(this), amount);
+    }
 
     function withdrawFunds(uint256 id, address to) external override {}
 }
