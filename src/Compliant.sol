@@ -277,6 +277,10 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return getFee() + automationFeeInLink;
     }
 
+    function getCompliantFeesToWithdraw() external view returns (uint256) {
+        return s_compliantFeesInLink;
+    }
+
     function getEverest() external view returns (IEverestConsumer) {
         return i_everest;
     }
