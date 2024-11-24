@@ -9,6 +9,9 @@ contract PerformUpkeepTest is BaseTest {
         /// @dev set user to pending request
         bytes memory compliantCalldata = abi.encode(1);
         _setUserPendingRequest(compliantCalldata);
+        /// @dev make sure the compliantCalldata stored for the pending request actually has data
+        Compliant.PendingRequest memory pendingRequest = compliant.getPendingRequest(user);
+        assertTrue(pendingRequest.compliantCalldata.length > 0);
 
         uint256 incrementedValueBefore = compliant.getAutomatedIncrement();
         assertEq(incrementedValueBefore, 0);
