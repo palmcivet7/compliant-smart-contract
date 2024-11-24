@@ -101,9 +101,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve
-    // update natspec
-    /// @dev if the data decodes to a true boolean, Chainlink Automation will be used to execute
-    /// compliantly-restricted logic as soon as a request is fulfilled (if the user is compliant)
+    /// @dev the data should contain the user address to request the kyc status of and a boolean
+    /// indicating whether automation should be used to subsequently execute logic based on the immediate result
     function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external {
         if (msg.sender != address(i_link)) revert Compliant__OnlyLinkToken();
 
