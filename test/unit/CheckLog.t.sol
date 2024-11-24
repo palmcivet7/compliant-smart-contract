@@ -12,7 +12,7 @@ contract CheckLogTest is BaseTest {
     //////////////////////////////////////////////////////////////*/
     /// @notice this test should be commented out if the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_revertsWhen_called() public {
-        Log memory log = _createLog(true);
+        Log memory log = _createLog(true, address(compliant));
         vm.expectRevert(abi.encodeWithSignature("OnlySimulatedBackend()"));
         compliant.checkLog(log, "");
     }
@@ -23,7 +23,7 @@ contract CheckLogTest is BaseTest {
         _setUserPendingRequest();
 
         /// @dev check log
-        Log memory log = _createLog(true);
+        Log memory log = _createLog(true, address(compliant));
         (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
 
         /// @dev decode performData
@@ -43,7 +43,7 @@ contract CheckLogTest is BaseTest {
         _setUserPendingRequest();
 
         /// @dev check log
-        Log memory log = _createLog(false);
+        Log memory log = _createLog(false, address(compliant));
         (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
 
         /// @dev decode performData
@@ -60,21 +60,31 @@ contract CheckLogTest is BaseTest {
     /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_isCompliant_and_notPending() public view {
         /// @dev check log
-        Log memory log = _createLog(true);
+        Log memory log = _createLog(true, address(compliant));
         (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
 
         assertEq(performData, "");
         assertFalse(upkeepNeeded);
     }
 
+    /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
+    function test_compliant_checkLog_revertsWhen_request_notCurrentContract() public {
+        address revealer = makeAddr("revealer");
+
+        /// @dev check log
+        Log memory log = _createLog(true, revealer);
+        vm.expectRevert(abi.encodeWithSignature("Compliant__RequestNotMadeByThisContract()"));
+        compliant.checkLog(log, "");
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 UTILITY
     //////////////////////////////////////////////////////////////*/
-    function _createLog(bool isCompliant) internal view returns (Log memory) {
+    function _createLog(bool isCompliant, address revealer) internal view returns (Log memory) {
         bytes32[] memory topics = new bytes32[](3);
         bytes32 eventSignature = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
         bytes32 requestId = bytes32(uint256(uint160(user)));
-        bytes32 addressToBytes32 = bytes32(uint256(uint160(address(compliant)))); // revealer
+        bytes32 addressToBytes32 = bytes32(uint256(uint160(revealer)));
         topics[0] = eventSignature;
         topics[1] = requestId;
         topics[2] = addressToBytes32;

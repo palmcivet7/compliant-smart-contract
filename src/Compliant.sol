@@ -132,7 +132,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     }
 
     /// @dev continuously simulated by Chainlink offchain Automation nodes
-    /// @notice upkeepNeeded evaluates to true if the Fulfilled log contains a compliant and pending request address
+    /// @notice upkeepNeeded evaluates to true if the Fulfilled log contains a pending requested address
     /// @param log ILogAutomation.Log
     function checkLog(Log calldata log, bytes memory)
         external
@@ -145,8 +145,6 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         if (log.source == address(i_everest) && log.topics[0] == eventSignature) {
             bytes32 requestId = log.topics[1];
 
-            // @audit-review test this
-            // probably redundant
             address revealer = address(uint160(uint256(log.topics[2])));
             if (revealer != address(this)) revert Compliant__RequestNotMadeByThisContract();
 
