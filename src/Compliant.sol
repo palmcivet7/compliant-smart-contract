@@ -211,6 +211,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @dev calculates fees in LINK and handles approvals
     /// @param isAutomated Whether to include automation fees
+    /// @param isOnTokenTransfer if the tx was initiated by erc677 onTokenTransfer, we don't need to transferFrom(msg.sender)
     function _handleFees(bool isAutomated, bool isOnTokenTransfer) internal returns (uint256) {
         uint256 compliantFeeInLink = _calculateCompliantFee();
         uint256 everestFeeInLink = i_everest.oraclePayment();
@@ -271,6 +272,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return _isCompliant(user);
     }
 
+    /// @notice returns the fee for a standard KYC request
     function getFee() public view returns (uint256) {
         uint256 compliantFeeInLink = _calculateCompliantFee();
         uint256 everestFeeInLink = i_everest.oraclePayment();
@@ -278,12 +280,14 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return compliantFeeInLink + everestFeeInLink;
     }
 
+    /// @notice returns the fee for a KYC request with subsequent automated logic
     function getFeeWithAutomation() external view returns (uint256) {
         uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
 
         return getFee() + automationFeeInLink;
     }
 
+    /// @notice returns the protocol fees available to withdraw by admin
     function getCompliantFeesToWithdraw() external view returns (uint256) {
         return s_compliantFeesInLink;
     }
