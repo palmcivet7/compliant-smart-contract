@@ -20,7 +20,8 @@ contract CheckLogTest is BaseTest {
     /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_isCompliant_and_pending() public {
         /// @dev set user to pending request
-        _setUserPendingRequest();
+        bytes memory emptyCallData = "";
+        _setUserPendingRequest(emptyCallData);
 
         /// @dev check log
         Log memory log = _createLog(true, address(compliant));
@@ -40,7 +41,8 @@ contract CheckLogTest is BaseTest {
     /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_isNonCompliant_and_pending() public {
         /// @dev set user to pending request
-        _setUserPendingRequest();
+        bytes memory emptyCallData = "";
+        _setUserPendingRequest(emptyCallData);
 
         /// @dev check log
         Log memory log = _createLog(false, address(compliant));
@@ -108,15 +110,5 @@ contract CheckLogTest is BaseTest {
         });
 
         return log;
-    }
-
-    function _setUserPendingRequest() internal {
-        uint256 amount = compliant.getFeeWithAutomation();
-        bytes memory data = abi.encode(user, true, "");
-        vm.prank(user);
-        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
-
-        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
-        assertTrue(request.isPending);
     }
 }

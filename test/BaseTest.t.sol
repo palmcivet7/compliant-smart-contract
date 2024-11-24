@@ -61,4 +61,15 @@ contract BaseTest is Test {
             false, true, true, msg.sender, _user, uint40(block.timestamp)
         );
     }
+
+    /// @dev set the user to pending request
+    function _setUserPendingRequest(bytes memory compliantCalldata) internal {
+        uint256 amount = compliant.getFeeWithAutomation();
+        bytes memory data = abi.encode(user, true, compliantCalldata);
+        vm.prank(user);
+        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
+
+        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        assertTrue(request.isPending);
+    }
 }

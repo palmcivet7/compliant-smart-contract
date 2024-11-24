@@ -6,6 +6,10 @@ import {BaseTest, Vm, Compliant} from "../BaseTest.t.sol";
 
 contract PerformUpkeepTest is BaseTest {
     function test_compliant_performUpkeep_isCompliant() public {
+        /// @dev set user to pending request
+        bytes memory compliantCalldata = abi.encode(1);
+        _setUserPendingRequest(compliantCalldata);
+
         uint256 incrementedValueBefore = compliant.getAutomatedIncrement();
         assertEq(incrementedValueBefore, 0);
 
@@ -46,6 +50,7 @@ contract PerformUpkeepTest is BaseTest {
 
         Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
         assertFalse(request.isPending);
+        assertEq(request.compliantCalldata.length, 0);
     }
 
     function test_compliant_performUpkeep_isNonCompliant() public {
