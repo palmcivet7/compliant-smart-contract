@@ -9,9 +9,7 @@ import {MockEverestConsumer} from "../mocks/MockEverestConsumer.sol";
 contract DoSomethingTest is BaseTest {
     function test_compliant_doSomething() public {
         /// @dev set the user to compliant
-        MockEverestConsumer(everest).setLatestFulfilledRequest(
-            false, true, true, msg.sender, user, uint40(block.timestamp)
-        );
+        _setUserToCompliant(user);
 
         uint256 incrementedValueBefore = compliant.getIncrementedValue();
         assertEq(incrementedValueBefore, 0);

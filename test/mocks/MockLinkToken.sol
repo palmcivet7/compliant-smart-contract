@@ -34,4 +34,7 @@ contract MockLinkToken is ERC20 {
         IERC677Receiver receiver = IERC677Receiver(_to);
         receiver.onTokenTransfer(msg.sender, _value, _data);
     }
+
+    /// @notice Empty test function to ignore file in coverage report
+    function test_mockLink() public {}
 }

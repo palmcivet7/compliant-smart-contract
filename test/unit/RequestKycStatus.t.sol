@@ -89,4 +89,14 @@ contract RequestKycStatusTest is BaseTest {
         assertEq(user, emittedUser);
         assertEq(fee, compliant.getFeeWithAutomation());
     }
+
+    function test_compliant_requestKycStatus_revertsWhen_userPendingRequest() public {
+        uint256 approvalAmount = compliant.getFeeWithAutomation() * 2;
+        vm.startPrank(user);
+        LinkTokenInterface(link).approve(address(compliant), approvalAmount);
+        compliant.requestKycStatus(user, true); // true for automation
+        vm.expectRevert(abi.encodeWithSignature("Compliant__PendingRequestExists(address)", user));
+        compliant.requestKycStatus(user, true); // true for automation
+        vm.stopPrank();
+    }
 }

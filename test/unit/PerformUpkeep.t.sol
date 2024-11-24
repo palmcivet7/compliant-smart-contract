@@ -43,6 +43,9 @@ contract PerformUpkeepTest is BaseTest {
 
         uint256 incrementedValueAfter = compliant.getAutomatedIncrement();
         assertEq(incrementedValueAfter, 1);
+
+        bool isPending = compliant.getPendingRequest(user);
+        assertFalse(isPending);
     }
 
     function test_compliant_performUpkeep_isNonCompliant() public {
@@ -83,6 +86,9 @@ contract PerformUpkeepTest is BaseTest {
 
         uint256 incrementedValueAfter = compliant.getAutomatedIncrement();
         assertEq(incrementedValueAfter, 0);
+
+        bool isPending = compliant.getPendingRequest(user);
+        assertFalse(isPending);
     }
 
     function test_compliant_performUpkeep_revertsWhen_not_forwarder() public {

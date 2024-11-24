@@ -119,4 +119,7 @@ contract MockEverestConsumer {
     function oraclePayment() external view returns (uint256 price) {
         return s_oraclePayment;
     }
+
+    /// @notice Empty test function to ignore file in coverage report
+    function test_mockEverest() public {}
 }

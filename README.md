@@ -13,3 +13,9 @@ This contract contains two practical examples of how a KYC status request can be
 ---
 
 By making the `Compliant` contract an ERC677Receiver, it enables users to request their compliant status in a single `i_link.transferAndCall()` transaction, as opposed to 2 transactions of approving and then requesting.
+
+## Testing
+
+See coverage with `forge coverage --report debug`.
+
+The `cannotExecute` will have to be commented out for some of the tests in `CheckLog.t.sol` to pass.

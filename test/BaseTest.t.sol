@@ -6,6 +6,7 @@ import {Test, Vm} from "forge-std/Test.sol";
 import {Compliant} from "../../src/Compliant.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {MockLinkToken} from "./mocks/MockLinkToken.sol";
+import {MockEverestConsumer} from "./mocks/MockEverestConsumer.sol";
 import {MockAutomationConsumer} from "./mocks/MockAutomationConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
@@ -46,5 +47,18 @@ contract BaseTest is Test {
         LinkTokenInterface(link).transfer(user, USER_LINK_BALANCE);
 
         vm.stopPrank();
+    }
+
+    /// @notice Empty test function to ignore file in coverage report
+    function test_baseTest() public {}
+
+    /*//////////////////////////////////////////////////////////////
+                                UTILITY
+    //////////////////////////////////////////////////////////////*/
+    /// @dev set the user to compliant
+    function _setUserToCompliant(address _user) internal {
+        MockEverestConsumer(everest).setLatestFulfilledRequest(
+            false, true, true, msg.sender, _user, uint40(block.timestamp)
+        );
     }
 }

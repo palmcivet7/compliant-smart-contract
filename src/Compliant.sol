@@ -22,6 +22,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     error Compliant__NonCompliantUser(address nonCompliantUser);
     error Compliant__PendingRequestExists(address pendingRequestedUser);
     error Compliant__OnlyForwarder();
+    error Compliant__RequestNotMadeByThisContract();
 
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
@@ -29,7 +30,9 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @dev 18 token decimals
     uint256 internal constant WAD_PRECISION = 1e18;
     /// @dev $0.50 to 8 decimals because price feeds have 8 decimals
-    uint256 internal constant COMPLIANT_FEE = 5_000_000;
+    /// @notice this value could be something different or even configurable
+    /// this could be the max - review this
+    uint256 internal constant COMPLIANT_FEE = 50_000_000;
 
     /// @dev Everest Chainlink Consumer
     IEverestConsumer internal immutable i_everest;
@@ -98,6 +101,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve
+    // update natspec
     /// @dev if the data decodes to a true boolean, Chainlink Automation will be used to execute
     /// compliantly-restricted logic as soon as a request is fulfilled (if the user is compliant)
     function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external {
@@ -141,8 +145,14 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
         if (log.source == address(i_everest) && log.topics[0] == eventSignature) {
             bytes32 requestId = log.topics[1];
-            address requestedAddress = address(uint160(uint256(log.topics[2])));
-            (, IEverestConsumer.Status kycStatus,) = abi.decode(log.data, (address, IEverestConsumer.Status, uint40));
+
+            // @audit-review test this
+            // probably redundant
+            address revealer = address(uint160(uint256(log.topics[2])));
+            if (revealer != address(this)) revert Compliant__RequestNotMadeByThisContract();
+
+            (address requestedAddress, IEverestConsumer.Status kycStatus,) =
+                abi.decode(log.data, (address, IEverestConsumer.Status, uint40));
 
             bool isCompliant;
             if (kycStatus == IEverestConsumer.Status.KYCUser) isCompliant = true;
@@ -307,6 +317,10 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     function getLastEverestRequestId(address user) external view returns (bytes32) {
         return s_lastEverestRequestId[user];
+    }
+
+    function getPendingRequest(address user) external view returns (bool) {
+        return s_pendingRequests[user];
     }
 
     /// @notice getter for example value

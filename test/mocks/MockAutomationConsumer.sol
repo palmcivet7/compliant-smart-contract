@@ -41,4 +41,7 @@ contract MockAutomationConsumer is IAutomationRegistryConsumer {
     }
 
     function withdrawFunds(uint256 id, address to) external override {}
+
+    /// @notice Empty test function to ignore file in coverage report
+    function test_mockAutomation() public {}
 }
