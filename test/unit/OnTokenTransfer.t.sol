@@ -2,18 +2,16 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, Vm, LinkTokenInterface} from "../BaseTest.t.sol";
+import {BaseTest, Vm, LinkTokenInterface, Compliant} from "../BaseTest.t.sol";
 import {MockLinkToken} from "../mocks/MockLinkToken.sol";
 
 contract OnTokenTransferTest is BaseTest {
-    function test_compliant_onTokenTransfer() public {
-        bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
-        assertEq(requestIdBefore, 0);
-
+    function test_compliant_onTokenTransfer_noAutomation() public {
         uint256 amount = compliant.getFee();
         /// @dev requesting the kyc status of user
         /// @dev false because we are not performing automation
-        bytes memory data = abi.encode(user, false);
+        /// @dev "" for no compliantCalldata because we are not automating anything to pass it to
+        bytes memory data = abi.encode(user, false, "");
 
         vm.recordLogs();
 
@@ -32,22 +30,18 @@ contract OnTokenTransferTest is BaseTest {
             }
         }
 
-        bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
-        assertEq(requestIdAfter, expectedRequestId);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
     }
 
     function test_compliant_onTokenTransfer_automation() public {
-        bytes32 requestIdBefore = compliant.getLastEverestRequestId(user);
-        assertEq(requestIdBefore, 0);
-
         uint256 amount = compliant.getFeeWithAutomation();
+        bytes memory compliantCalldata = abi.encode(1);
         /// @dev requesting the kyc status of user
         /// @dev true because we are performing automation
-        bytes memory data = abi.encode(user, true);
+        bytes memory data = abi.encode(user, true, compliantCalldata);
 
         vm.recordLogs();
 
@@ -66,10 +60,14 @@ contract OnTokenTransferTest is BaseTest {
             }
         }
 
-        bytes32 requestIdAfter = compliant.getLastEverestRequestId(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
-        assertEq(requestIdAfter, expectedRequestId);
+        Compliant.PendingRequest memory pendingRequest = compliant.getPendingRequest(user);
+        bool isPending = pendingRequest.isPending;
+        bytes memory storedCalldata = pendingRequest.compliantCalldata;
+
+        assertTrue(isPending);
+        assertEq(storedCalldata, compliantCalldata);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
     }
@@ -91,7 +89,7 @@ contract OnTokenTransferTest is BaseTest {
         vm.startPrank(user);
         uint256 fee = compliant.getFee();
         uint256 amount = fee - 1;
-        bytes memory data = abi.encode(user, false);
+        bytes memory data = abi.encode(user, false, "");
 
         vm.expectRevert(
             abi.encodeWithSignature("Compliant__InsufficientLinkTransferAmount(uint256,uint256)", amount, fee)

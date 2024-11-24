@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, LinkTokenInterface} from "../BaseTest.t.sol";
+import {BaseTest, LinkTokenInterface, Compliant} from "../BaseTest.t.sol";
 import {ILogAutomation, Log} from "@chainlink/contracts/src/v0.8/automation/interfaces/ILogAutomation.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 
@@ -112,11 +112,11 @@ contract CheckLogTest is BaseTest {
 
     function _setUserPendingRequest() internal {
         uint256 amount = compliant.getFeeWithAutomation();
-        bytes memory data = abi.encode(user, true);
+        bytes memory data = abi.encode(user, true, "");
         vm.prank(user);
         LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
 
-        bool isPending = compliant.getPendingRequest(user);
-        assertTrue(isPending);
+        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        assertTrue(request.isPending);
     }
 }

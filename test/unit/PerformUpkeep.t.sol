@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, Vm} from "../BaseTest.t.sol";
+import {BaseTest, Vm, Compliant} from "../BaseTest.t.sol";
 
 contract PerformUpkeepTest is BaseTest {
     function test_compliant_performUpkeep_isCompliant() public {
@@ -44,8 +44,8 @@ contract PerformUpkeepTest is BaseTest {
         uint256 incrementedValueAfter = compliant.getAutomatedIncrement();
         assertEq(incrementedValueAfter, 1);
 
-        bool isPending = compliant.getPendingRequest(user);
-        assertFalse(isPending);
+        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        assertFalse(request.isPending);
     }
 
     function test_compliant_performUpkeep_isNonCompliant() public {
@@ -87,8 +87,8 @@ contract PerformUpkeepTest is BaseTest {
         uint256 incrementedValueAfter = compliant.getAutomatedIncrement();
         assertEq(incrementedValueAfter, 0);
 
-        bool isPending = compliant.getPendingRequest(user);
-        assertFalse(isPending);
+        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        assertFalse(request.isPending);
     }
 
     function test_compliant_performUpkeep_revertsWhen_not_forwarder() public {

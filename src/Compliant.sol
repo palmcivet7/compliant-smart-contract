@@ -13,7 +13,7 @@ import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/I
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
-abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
+contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -23,6 +23,7 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
     error Compliant__PendingRequestExists(address pendingRequestedAddress);
     error Compliant__OnlyForwarder();
     error Compliant__RequestNotMadeByThisContract();
+    error Compliant__IncorrectRequestId();
 
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
@@ -52,7 +53,6 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
 
     /// map the user to the pending request
     struct PendingRequest {
-        bytes32 requestId;
         bytes compliantCalldata;
         bool isPending;
     }
@@ -122,7 +122,7 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
 
     /// @notice anyone can call this function to request the KYC status of their address
     /// @notice msg.sender must approve address(this) on LINK token contract
-    function requestKycStatus(address user, bool isAutomated, bytes memory compliantCalldata)
+    function requestKycStatus(address user, bool isAutomated, bytes calldata compliantCalldata)
         external
         returns (uint256)
     {
@@ -154,6 +154,7 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
         if (log.source == address(i_everest) && log.topics[0] == eventSignature) {
             bytes32 requestId = log.topics[1];
 
+            /// @dev revert if request wasn't made by this contract
             address revealer = address(uint160(uint256(log.topics[2])));
             if (revealer != address(this)) revert Compliant__RequestNotMadeByThisContract();
 
@@ -184,11 +185,7 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
         if (isCompliant) {
             // compliant-restricted logic goes here
 
-            // is this check needed? should it be outside the (isCompliant) brackets?
-            PendingRequest memory request = s_pendingRequests[user];
-            if (requestId != request.requestId) revert Compliant__IncorrectRequest();
-
-            bytes memory data = request.compliantCalldata;
+            bytes memory data = s_pendingRequests[user].compliantCalldata;
             _executeCompliantLogic(user, data);
 
             s_automatedIncrement++;
@@ -208,7 +205,7 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @dev inherit and implement this
-    function _executeCompliantLogic(address user, bytes memory data) internal virtual;
+    function _executeCompliantLogic(address user, bytes memory data) internal virtual {}
 
     /// @dev requests the kyc status of the user
     function _requestKycStatus(address user, bool isAutomated, bytes memory compliantCalldata) internal {
@@ -218,8 +215,6 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
 
         bytes32 everestRequestId = i_everest.getLatestSentRequestId();
 
-        if (isAutomated) s_pendingRequests[user].requestId = everestRequestId;
-
         emit KYCStatusRequested(everestRequestId, user);
     }
 
@@ -227,7 +222,10 @@ abstract contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677R
     function _setPendingRequest(address user, bytes memory compliantCalldata) internal {
         if (s_pendingRequests[user].isPending) revert Compliant__PendingRequestExists(user);
         s_pendingRequests[user].isPending = true;
-        s_pendingRequests[user].compliantCalldata = compliantCalldata;
+
+        if (compliantCalldata.length > 0) {
+            s_pendingRequests[user].compliantCalldata = compliantCalldata;
+        }
     }
 
     /// @dev calculates fees in LINK and handles approvals

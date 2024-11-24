@@ -19,3 +19,11 @@ By making the `Compliant` contract an ERC677Receiver, it enables users to reques
 See coverage with `forge coverage --report debug`.
 
 The `cannotExecute` will have to be commented out for some of the tests in `CheckLog.t.sol` to pass.
+
+## User Flow
+
+Users can interact with the Compliant contract in two ways:
+
+1. Call `LINK.transferAndCall()` on the LINK token address, passing the Compliant contract's address, fee amount, and calldata. The calldata should include the address to query and instructions on whether to automate a response to the fulfilled compliance check request. The fee amount to pass can be read from either `Compliant.getFee()` or `Compliant.getFeeWithAutomation()` depending on if the request is intended to use Automation or not. `transferAndCall()` allows the user to request the KYC status in a single transaction. Combining it with the automation option allows the user to request the KYC status and execute subsequent logic based on the immediate result in a single transaction.
+
+2. Call `LINK.approve()` on the LINK token address, passing the Compliant contract's address and fee amount. Then call `Compliant.requestKycStatus()`, passing the address to query and instructions on whether to automate a response to the fulfilled compliance check request.
