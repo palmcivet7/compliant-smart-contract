@@ -191,6 +191,12 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
             // compliant-restricted logic goes here
 
             bytes memory data = s_pendingRequests[user].compliantCalldata;
+
+            /// @dev reset compliantCalldata mapped to user
+            if (data.length > 0) {
+                s_pendingRequests[user].compliantCalldata = "";
+            }
+
             _executeCompliantLogic(user, data);
 
             s_automatedIncrement++;
