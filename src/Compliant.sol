@@ -20,13 +20,21 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     error Compliant__OnlyLinkToken();
     error Compliant__InsufficientLinkTransferAmount(uint256 insufficientAmount, uint256 requiredAmount);
     error Compliant__NonCompliantUser(address nonCompliantUser);
-    error Compliant__PendingRequestExists(address pendingRequestedUser);
+    error Compliant__PendingRequestExists(address pendingRequestedAddress);
     error Compliant__OnlyForwarder();
     error Compliant__RequestNotMadeByThisContract();
+    error Compliant__IncorrectRequestId();
 
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
+    /// @param compliantCalldata arbitrary data to pass to compliantly-restricted function is applicable
+    /// @param isPending if this is true and a Fulfilled event is emitted by Everest, Chainlink Automation will perform
+    struct PendingRequest {
+        bytes compliantCalldata;
+        bool isPending;
+    }
+
     /// @dev 18 token decimals
     uint256 internal constant WAD_PRECISION = 1e18;
     /// @dev $0.50 to 8 decimals because price feeds have 8 decimals
@@ -49,11 +57,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @dev tracks the accumulated fees for this contract in LINK
     uint256 internal s_compliantFeesInLink;
-    /// @dev maps the address of the requested user to the last request id
-    // @audit-review is this really needed?
-    mapping(address user => bytes32 lastRequestId) internal s_lastEverestRequestId;
-    /// @dev tracks pending kyc status requests
-    mapping(address user => bool requestPending) internal s_pendingRequests;
+    /// @dev maps a user to a PendingRequest struct if the request requires Automation
+    mapping(address user => PendingRequest) internal s_pendingRequests;
 
     /// @notice These two values are included for demo purposes
     /// @dev This can only be incremented by users who have completed KYC
@@ -100,25 +105,34 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
-    /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve
-    /// @dev the data should contain the user address to request the kyc status of and a boolean
-    /// indicating whether automation should be used to subsequently execute logic based on the immediate result
+    /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve and requestKycStatus
+    /// @param amount fee to pay for the request get it from getFee() or getFeeWithAutomation()
+    /// @param data encoded data should contain the user address to request the kyc status of, a boolean
+    /// indicating whether automation should be used to subsequently execute logic based on the immediate result,
+    /// and arbitrary data to be passed to compliant restricted logic
     function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external {
         if (msg.sender != address(i_link)) revert Compliant__OnlyLinkToken();
 
-        (address user, bool isAutomatedRequest) = abi.decode(data, (address, bool));
+        (address user, bool isAutomatedRequest, bytes memory compliantCalldata) =
+            abi.decode(data, (address, bool, bytes));
 
         uint256 fees = _handleFees(isAutomatedRequest, true);
         if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(amount, fees);
 
-        _requestKycStatus(user, isAutomatedRequest);
+        _requestKycStatus(user, isAutomatedRequest, compliantCalldata);
     }
 
     /// @notice anyone can call this function to request the KYC status of their address
     /// @notice msg.sender must approve address(this) on LINK token contract
-    function requestKycStatus(address user, bool isAutomated) external returns (uint256) {
+    /// @param user address to request kyc status of
+    /// @param isAutomated true if using automation to execute logic based on fulfilled request
+    /// @param compliantCalldata arbitrary data to pass to compliantly restricted logic based on fulfilled request
+    function requestKycStatus(address user, bool isAutomated, bytes calldata compliantCalldata)
+        external
+        returns (uint256)
+    {
         uint256 fee = _handleFees(isAutomated, false);
-        _requestKycStatus(user, isAutomated);
+        _requestKycStatus(user, isAutomated, compliantCalldata);
         return fee;
     }
 
@@ -145,6 +159,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         if (log.source == address(i_everest) && log.topics[0] == eventSignature) {
             bytes32 requestId = log.topics[1];
 
+            /// @dev revert if request wasn't made by this contract
             address revealer = address(uint160(uint256(log.topics[2])));
             if (revealer != address(this)) revert Compliant__RequestNotMadeByThisContract();
 
@@ -154,7 +169,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
             bool isCompliant;
             if (kycStatus == IEverestConsumer.Status.KYCUser) isCompliant = true;
 
-            if (s_pendingRequests[requestedAddress]) {
+            if (s_pendingRequests[requestedAddress].isPending) {
                 performData = abi.encode(requestId, requestedAddress, isCompliant);
                 upkeepNeeded = true;
             }
@@ -163,17 +178,25 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @notice called by Chainlink Automation forwarder if the user has completed KYC
     /// @dev this function should contain the logic restricted for compliant only users
-    /// @param performData encoded bytes contains address of requested user and bool isCompliant
+    /// @param performData encoded bytes contains bytes32 requestId, address of requested user and bool isCompliant
     function performUpkeep(bytes calldata performData) external {
         if (msg.sender != i_forwarder) revert Compliant__OnlyForwarder();
         (bytes32 requestId, address user, bool isCompliant) = abi.decode(performData, (bytes32, address, bool));
 
-        s_pendingRequests[user] = false;
+        s_pendingRequests[user].isPending = false;
+
+        bytes memory data = s_pendingRequests[user].compliantCalldata;
+        /// @dev reset compliantCalldata mapped to user
+        if (data.length > 0) {
+            s_pendingRequests[user].compliantCalldata = "";
+        }
 
         emit KYCStatusRequestFulfilled(requestId, user, isCompliant);
 
         if (isCompliant) {
             // compliant-restricted logic goes here
+            _executeCompliantLogic(user, data);
+
             s_automatedIncrement++;
             emit CompliantCheckPassed();
         }
@@ -190,23 +213,28 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
+    /// @dev inherit and implement this
+    function _executeCompliantLogic(address user, bytes memory data) internal virtual {}
+
     /// @dev requests the kyc status of the user
-    function _requestKycStatus(address user, bool isAutomated) internal {
-        if (isAutomated) _setPendingRequest(user);
+    function _requestKycStatus(address user, bool isAutomated, bytes memory compliantCalldata) internal {
+        if (isAutomated) _setPendingRequest(user, compliantCalldata);
 
         i_everest.requestStatus(user);
 
         bytes32 everestRequestId = i_everest.getLatestSentRequestId();
 
-        s_lastEverestRequestId[user] = everestRequestId;
-
         emit KYCStatusRequested(everestRequestId, user);
     }
 
     /// @dev Chainlink Automation will only trigger for a true pending request
-    function _setPendingRequest(address user) internal {
-        if (s_pendingRequests[user]) revert Compliant__PendingRequestExists(user);
-        s_pendingRequests[user] = true;
+    function _setPendingRequest(address user, bytes memory compliantCalldata) internal {
+        if (s_pendingRequests[user].isPending) revert Compliant__PendingRequestExists(user);
+        s_pendingRequests[user].isPending = true;
+
+        if (compliantCalldata.length > 0) {
+            s_pendingRequests[user].compliantCalldata = compliantCalldata;
+        }
     }
 
     /// @dev calculates fees in LINK and handles approvals
@@ -316,11 +344,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return i_claSubId;
     }
 
-    function getLastEverestRequestId(address user) external view returns (bytes32) {
-        return s_lastEverestRequestId[user];
-    }
-
-    function getPendingRequest(address user) external view returns (bool) {
+    function getPendingRequest(address user) external view returns (PendingRequest memory) {
         return s_pendingRequests[user];
     }
 
