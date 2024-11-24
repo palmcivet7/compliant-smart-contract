@@ -10,11 +10,11 @@ contract CheckLogTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
                                  TESTS
     //////////////////////////////////////////////////////////////*/
-    // function test_compliant_checkLog_revertsWhen_called() public {
-    //     Log memory log = _createLog(true);
-    //     vm.expectRevert(abi.encodeWithSignature("OnlySimulatedBackend()"));
-    //     compliant.checkLog(log, "");
-    // }
+    function test_compliant_checkLog_revertsWhen_called() public {
+        Log memory log = _createLog(true);
+        vm.expectRevert(abi.encodeWithSignature("OnlySimulatedBackend()"));
+        compliant.checkLog(log, "");
+    }
 
     /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_isCompliant_and_pending() public {
@@ -65,16 +65,6 @@ contract CheckLogTest is BaseTest {
         assertEq(performData, "");
         assertFalse(upkeepNeeded);
     }
-
-    // /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
-    // function test_compliant_checkLog_isCompliant_and_notPending() public view {
-    //     /// @dev check log
-    //     Log memory log = _createLog(true);
-    //     (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
-
-    //     assertEq(performData, "");
-    //     assertFalse(upkeepNeeded);
-    // }
 
     /*//////////////////////////////////////////////////////////////
                                 UTILITY
