@@ -195,7 +195,6 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
         if (isCompliant) {
             // compliant-restricted logic goes here
-
             _executeCompliantLogic(user, data);
 
             s_automatedIncrement++;
