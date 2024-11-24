@@ -105,8 +105,9 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
-    /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve
-    /// @dev the data should contain the user address to request the kyc status of, a boolean
+    /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve and requestKycStatus
+    /// @param amount fee to pay for the request get it from getFee() or getFeeWithAutomation()
+    /// @param data encoded data should contain the user address to request the kyc status of, a boolean
     /// indicating whether automation should be used to subsequently execute logic based on the immediate result,
     /// and arbitrary data to be passed to compliant restricted logic
     function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external {
@@ -123,6 +124,9 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @notice anyone can call this function to request the KYC status of their address
     /// @notice msg.sender must approve address(this) on LINK token contract
+    /// @param user address to request kyc status of
+    /// @param isAutomated true if using automation to execute logic based on fulfilled request
+    /// @param compliantCalldata arbitrary data to pass to compliantly restricted logic based on fulfilled request
     function requestKycStatus(address user, bool isAutomated, bytes calldata compliantCalldata)
         external
         returns (uint256)
@@ -174,7 +178,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @notice called by Chainlink Automation forwarder if the user has completed KYC
     /// @dev this function should contain the logic restricted for compliant only users
-    /// @param performData encoded bytes contains address of requested user and bool isCompliant
+    /// @param performData encoded bytes contains bytes32 requestId, address of requested user and bool isCompliant
     function performUpkeep(bytes calldata performData) external {
         if (msg.sender != i_forwarder) revert Compliant__OnlyForwarder();
         (bytes32 requestId, address user, bool isCompliant) = abi.decode(performData, (bytes32, address, bool));
