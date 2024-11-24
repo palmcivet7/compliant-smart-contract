@@ -97,6 +97,7 @@ contract PerformUpkeepTest is BaseTest {
 
         Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
         assertFalse(request.isPending);
+        assertEq(request.compliantCalldata.length, 0);
     }
 
     function test_compliant_performUpkeep_revertsWhen_not_forwarder() public {
