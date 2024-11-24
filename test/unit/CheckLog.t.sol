@@ -10,6 +10,7 @@ contract CheckLogTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
                                  TESTS
     //////////////////////////////////////////////////////////////*/
+    /// @notice this test should be commented out if the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_revertsWhen_called() public {
         Log memory log = _createLog(true);
         vm.expectRevert(abi.encodeWithSignature("OnlySimulatedBackend()"));
