@@ -28,6 +28,13 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
+    /// @param compliantCalldata arbitrary data to pass to compliantly-restricted function is applicable
+    /// @param isPending if this is true and a Fulfilled event is emitted by Everest, Chainlink Automation will perform
+    struct PendingRequest {
+        bytes compliantCalldata;
+        bool isPending;
+    }
+
     /// @dev 18 token decimals
     uint256 internal constant WAD_PRECISION = 1e18;
     /// @dev $0.50 to 8 decimals because price feeds have 8 decimals
@@ -50,13 +57,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @dev tracks the accumulated fees for this contract in LINK
     uint256 internal s_compliantFeesInLink;
-
-    /// map the user to the pending request
-    struct PendingRequest {
-        bytes compliantCalldata;
-        bool isPending;
-    }
-
+    /// @dev maps a user to a PendingRequest struct if the request requires Automation
     mapping(address user => PendingRequest) internal s_pendingRequests;
 
     /// @notice These two values are included for demo purposes
