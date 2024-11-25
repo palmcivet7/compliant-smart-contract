@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.24;
 
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
@@ -11,9 +10,15 @@ import {IAutomationRegistryConsumer} from
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
 contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
+    /*//////////////////////////////////////////////////////////////
+                           TYPE DECLARATIONS
+    //////////////////////////////////////////////////////////////*/
+    using SafeERC20 for LinkTokenInterface;
+
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -23,12 +28,11 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     error Compliant__PendingRequestExists(address pendingRequestedAddress);
     error Compliant__OnlyForwarder();
     error Compliant__RequestNotMadeByThisContract();
-    error Compliant__IncorrectRequestId();
 
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
-    /// @param compliantCalldata arbitrary data to pass to compliantly-restricted function is applicable
+    /// @param compliantCalldata arbitrary data to pass to compliantly-restricted function if applicable
     /// @param isPending if this is true and a Fulfilled event is emitted by Everest, Chainlink Automation will perform
     struct PendingRequest {
         bytes compliantCalldata;
@@ -40,7 +44,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @dev $0.50 to 8 decimals because price feeds have 8 decimals
     /// @notice this value could be something different or even configurable
     /// this could be the max - review this
-    uint256 internal constant COMPLIANT_FEE = 50_000_000;
+    uint256 internal constant COMPLIANT_FEE = 5e7; // 50_000_000
 
     /// @dev Everest Chainlink Consumer
     IEverestConsumer internal immutable i_everest;
