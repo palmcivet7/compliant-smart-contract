@@ -1,4 +1,6 @@
-# Compliant Access Only
+# Compliant Smart Contract
+
+This project demonstrates a compliant smart contract. Users can interact with this contract to request the KYC status of an address and automatically execute logic based on the result.
 
 ## Compliant.sol
 
@@ -16,9 +18,11 @@ By making the `Compliant` contract an ERC677Receiver, it enables users to reques
 
 ## Testing
 
-See coverage with `forge coverage --report debug`.
+See coverage with `forge coverage` and `forge coverage --report debug`.
 
-The `cannotExecute` will have to be commented out for some of the tests in `CheckLog.t.sol` to pass.
+The `cannotExecute` modifier on `checkLog()` will have to be commented out for some of the tests in `CheckLog.t.sol` to pass. This will also require the `test_compliant_checkLog_revertsWhen_called` test to be commented out too.
+
+Then run `forge test --mt test_compliant` for unit tests.
 
 ## User Flow
 
