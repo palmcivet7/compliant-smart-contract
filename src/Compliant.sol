@@ -5,12 +5,13 @@ import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.s
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 import {ILogAutomation, Log} from "@chainlink/contracts/src/v0.8/automation/interfaces/ILogAutomation.sol";
 import {AutomationBase} from "@chainlink/contracts/src/v0.8/automation/AutomationBase.sol";
-import {IAutomationRegistryConsumer} from
-    "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
+import {IAutomationRegistryMaster} from
+    "@chainlink/contracts/src/v0.8/automation/interfaces/v2_2/IAutomationRegistryMaster.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IAutomationRegistrar, RegistrationParams} from "./interfaces/IAutomationRegistrar.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
 contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
@@ -22,6 +23,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
+    error Compliant__AutomationRegistrationFailed();
     error Compliant__OnlyLinkToken();
     error Compliant__InsufficientLinkTransferAmount(uint256 insufficientAmount, uint256 requiredAmount);
     error Compliant__NonCompliantUser(address nonCompliantUser);
@@ -52,8 +54,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     LinkTokenInterface internal immutable i_link;
     /// @dev Chainlink PriceFeed for LINK/USD
     AggregatorV3Interface internal immutable i_priceFeed;
-    /// @dev Chainlink Automation Consumer
-    IAutomationRegistryConsumer internal immutable i_automation;
+    /// @dev Chainlink Automation Registry
+    IAutomationRegistryMaster internal immutable i_automation;
     /// @dev Chainlink Automation forwarder
     address internal immutable i_forwarder;
     /// @dev Chainlink Automation subscription ID
@@ -87,23 +89,37 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @param everest Everest Chainlink consumer
     /// @param link LINK token
     /// @param priceFeed LINK/USD Chainlink PriceFeed
-    /// @param automation Chainlink Automation consumer
-    /// @param forwarder Chainlink Automation forwarder
-    /// @param claSubId Chainlink Automation subscription ID
-    constructor(
-        address everest,
-        address link,
-        address priceFeed,
-        address automation,
-        address forwarder,
-        uint256 claSubId
-    ) Ownable(msg.sender) {
+    /// @param automation Chainlink Automation registry
+    /// @param registrar Chainlink Automation registrar
+    constructor(address everest, address link, address priceFeed, address automation, address registrar)
+        Ownable(msg.sender)
+    {
         i_everest = IEverestConsumer(everest);
         i_link = LinkTokenInterface(link);
         i_priceFeed = AggregatorV3Interface(priceFeed);
-        i_automation = IAutomationRegistryConsumer(automation);
-        i_forwarder = forwarder;
-        i_claSubId = claSubId;
+        i_automation = IAutomationRegistryMaster(automation);
+
+        RegistrationParams memory params = RegistrationParams({
+            name: "",
+            encryptedEmail: hex"",
+            upkeepContract: address(this),
+            gasLimit: 5000000,
+            adminAddress: msg.sender,
+            triggerType: 1, // log trigger
+            checkData: hex"",
+            triggerConfig: hex"",
+            offchainConfig: hex"",
+            amount: 3000000000000000000 // amount of link to fund sub with
+        });
+
+        LinkTokenInterface(link).approve(registrar, params.amount);
+        uint256 upkeepId = IAutomationRegistrar(registrar).registerUpkeep(params);
+        if (upkeepId != 0) {
+            i_claSubId = upkeepId;
+            i_forwarder = i_automation.getForwarder(upkeepId);
+        } else {
+            revert Compliant__AutomationRegistrationFailed();
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -336,7 +352,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return i_priceFeed;
     }
 
-    function getAutomation() external view returns (IAutomationRegistryConsumer) {
+    function getAutomation() external view returns (IAutomationRegistryMaster) {
         return i_automation;
     }
 
