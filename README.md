@@ -40,4 +40,4 @@ There are two obvious viable design choices for handling Chainlink Automation va
 
 1. Store them in storage and have a trusted admin set them. The downside of this is the added gas cost to the user for reading from storage. The benefit of this is simplicity and transparency.
 
-2. Use a proxy address and have the Automation values immutable in the bytecode. The benefit of this is the cheaper gas cost for the user not having to read from storage. The downside is the added complexity and added trust the admin of the contract will not deploy a malicious implementation.
+2. Use a proxy address and have the Automation values immutable in the bytecode. The benefit of this is the cheaper gas cost for the user not having to read from storage. The downside is the added complexity and added trust the admin of the contract will not deploy a malicious implementation. The proxy can later be made immutable, but the registry address should probably still be configurable.
