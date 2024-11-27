@@ -56,8 +56,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     IAutomationRegistryConsumer internal immutable i_automation;
     /// @dev Chainlink Automation forwarder
     address internal immutable i_forwarder;
-    /// @dev Chainlink Automation subscription ID
-    uint256 internal immutable i_claSubId;
+    /// @dev Chainlink Automation upkeep/subscription ID
+    uint256 internal immutable i_upkeepId;
 
     /// @dev tracks the accumulated fees for this contract in LINK
     uint256 internal s_compliantFeesInLink;
@@ -89,21 +89,21 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @param priceFeed LINK/USD Chainlink PriceFeed
     /// @param automation Chainlink Automation consumer
     /// @param forwarder Chainlink Automation forwarder
-    /// @param claSubId Chainlink Automation subscription ID
+    /// @param upkeepId Chainlink Automation upkeep/subscription ID
     constructor(
         address everest,
         address link,
         address priceFeed,
         address automation,
         address forwarder,
-        uint256 claSubId
+        uint256 upkeepId
     ) Ownable(msg.sender) {
         i_everest = IEverestConsumer(everest);
         i_link = LinkTokenInterface(link);
         i_priceFeed = AggregatorV3Interface(priceFeed);
         i_automation = IAutomationRegistryConsumer(automation);
         i_forwarder = forwarder;
-        i_claSubId = claSubId;
+        i_upkeepId = upkeepId;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -252,7 +252,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
         uint256 totalFee = compliantFeeInLink + everestFeeInLink;
 
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+        uint96 automationFeeInLink = i_automation.getMinBalance(i_upkeepId);
 
         if (isAutomated) {
             totalFee += automationFeeInLink;
@@ -265,7 +265,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         }
 
         if (isAutomated) {
-            i_automation.addFunds(i_claSubId, automationFeeInLink);
+            i_automation.addFunds(i_upkeepId, automationFeeInLink);
         }
 
         i_link.approve(address(i_everest), everestFeeInLink);
@@ -314,7 +314,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @notice returns the fee for a KYC request with subsequent automated logic
     function getFeeWithAutomation() external view returns (uint256) {
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+        uint96 automationFeeInLink = i_automation.getMinBalance(i_upkeepId);
 
         return getFee() + automationFeeInLink;
     }
@@ -344,8 +344,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return i_forwarder;
     }
 
-    function getClaSubId() external view returns (uint256) {
-        return i_claSubId;
+    function getUpkeepId() external view returns (uint256) {
+        return i_upkeepId;
     }
 
     function getPendingRequest(address user) external view returns (PendingRequest memory) {

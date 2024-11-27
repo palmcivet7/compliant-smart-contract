@@ -11,7 +11,7 @@ contract ConstructorTest is BaseTest {
         assertEq(address(compliant.getPriceFeed()), priceFeed);
         assertEq(address(compliant.getAutomation()), automation);
         assertEq(compliant.getForwarder(), forwarder);
-        assertEq(compliant.getClaSubId(), claSubId);
+        assertEq(compliant.getUpkeepId(), upkeepId);
 
         assertEq(compliant.owner(), deployer);
     }

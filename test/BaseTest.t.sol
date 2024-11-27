@@ -23,7 +23,7 @@ contract BaseTest is Test {
     address internal priceFeed;
     address internal automation;
     address internal forwarder = makeAddr("forwarder");
-    uint256 internal claSubId = 1;
+    uint256 internal upkeepId = 1;
 
     address internal deployer = makeAddr("deployer");
     address internal user = makeAddr("user");
@@ -42,7 +42,7 @@ contract BaseTest is Test {
 
         MockAutomationConsumer(automation).setMinBalance(AUTOMATION_MIN_BALANCE);
 
-        compliant = new Compliant(everest, link, priceFeed, automation, forwarder, claSubId);
+        compliant = new Compliant(everest, link, priceFeed, automation, forwarder, upkeepId);
 
         LinkTokenInterface(link).transfer(user, USER_LINK_BALANCE);
 
