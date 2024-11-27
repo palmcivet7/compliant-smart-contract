@@ -157,6 +157,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         /// @dev register Automation and store upkeepId and forwarder as immutable
         LinkTokenInterface(link).approve(registrar, params.amount);
         uint256 upkeepId = IAutomationRegistrar(registrar).registerUpkeep(params);
+        /// @dev this requires automatic registration for all log trigger registrations to be enabled
         if (upkeepId != 0) {
             i_upkeepId = upkeepId;
             i_forwarder = i_automation.getForwarder(upkeepId);

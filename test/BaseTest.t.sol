@@ -3,7 +3,7 @@
 pragma solidity 0.8.24;
 
 import {Test, Vm} from "forge-std/Test.sol";
-import {Compliant} from "../../src/Compliant.sol";
+import {Compliant, IAutomationRegistrar} from "../../src/Compliant.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {MockLinkToken} from "./mocks/MockLinkToken.sol";
 import {MockEverestConsumer} from "./mocks/MockEverestConsumer.sol";
@@ -58,6 +58,13 @@ contract BaseTest is Test {
 
         /// @dev deal ETH to deployer
         vm.deal(deployer, DEPLOYER_BALANCE);
+
+        /// @notice this reverts because the contract we are deploying isnt yet considered a contract
+        /// @dev prank registrar owner to enable automatic log trigger registrations
+        /// @notice this is needed because automatic log trigger registrations are not enabled for all on mainnet
+        vm.prank(IAutomationRegistrar(registrar).owner());
+        /// 1 = log trigger automation, 2 = ENABLED_ALL
+        IAutomationRegistrar(registrar).setTriggerConfig(1, 2, type(uint32).max);
 
         /// @dev deploy Compliant
         vm.prank(deployer);

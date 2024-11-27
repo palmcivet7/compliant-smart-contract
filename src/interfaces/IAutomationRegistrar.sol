@@ -26,4 +26,6 @@ struct LogTriggerConfig {
 interface IAutomationRegistrar {
     function registerUpkeep(RegistrationParams calldata requestParams) external returns (uint256);
     function getConfig() external view returns (address keeperRegistry, uint256 minLINKJuels);
+    function owner() external view returns (address);
+    function setTriggerConfig(uint8 triggerType, uint8 autoApproveType, uint32 autoApproveMaxAllowed) external;
 }
