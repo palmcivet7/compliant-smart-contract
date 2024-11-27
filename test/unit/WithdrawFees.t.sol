@@ -24,7 +24,7 @@ contract WithdrawFeesTest is BaseTest {
     function test_compliant_withdrawFees() public {
         vm.prank(user);
         uint256 fee = compliant.requestKycStatus(user, false, ""); // false for no automation
-        uint256 compliantFee = fee - IEverestConsumer(everest).oraclePayment();
+        uint256 compliantFee = fee - IEverestConsumer(address(everest)).oraclePayment();
 
         address owner = compliant.owner();
         uint256 balanceBefore = LinkTokenInterface(link).balanceOf(owner);

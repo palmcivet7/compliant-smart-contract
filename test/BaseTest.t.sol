@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.24;
 
 import {Test, Vm} from "forge-std/Test.sol";
@@ -9,44 +8,81 @@ import {MockLinkToken} from "./mocks/MockLinkToken.sol";
 import {MockEverestConsumer} from "./mocks/MockEverestConsumer.sol";
 import {MockAutomationConsumer} from "./mocks/MockAutomationConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
+import {CompliantProxy} from "../src/proxy/CompliantProxy.sol";
+import {InitialImplementation} from "../src/proxy/InitialImplementation.sol";
+import {IAutomationRegistrar, RegistrationParams, LogTriggerConfig} from "../src/interfaces/IAutomationRegistrar.sol";
+import {IAutomationRegistryMaster} from
+    "@chainlink/contracts/src/v0.8/automation/interfaces/v2_2/IAutomationRegistryMaster.sol";
+import {
+    TransparentUpgradeableProxy,
+    ITransparentUpgradeableProxy,
+    ProxyAdmin
+} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract BaseTest is Test {
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
+    uint256 internal constant MAINNET_STARTING_BLOCK = 21278732;
     uint256 internal constant USER_LINK_BALANCE = 10 * 1e18;
     uint96 internal constant AUTOMATION_MIN_BALANCE = 1e17;
 
+    CompliantProxy internal compliantProxy;
     Compliant internal compliant;
-    address internal everest;
+    MockEverestConsumer internal everest;
     address internal link;
-    address internal priceFeed;
-    address internal automation;
-    address internal forwarder = makeAddr("forwarder");
-    uint256 internal upkeepId = 1;
+    address internal linkUsdFeed;
+    address internal registry;
+    address internal registrar;
+    address internal forwarder;
+    uint256 internal upkeepId;
 
-    address internal deployer = makeAddr("deployer");
+    address internal deployer = vm.envAddress("DEPLOYER_ADDRESS");
     address internal user = makeAddr("user");
+    address internal proxyDeployer = makeAddr("proxyDeployer");
+
+    uint256 internal ethMainnetFork;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
     //////////////////////////////////////////////////////////////*/
     function setUp() public virtual {
-        vm.startPrank(deployer);
-
+        /// @dev fork mainnet and initialize contracts
+        ethMainnetFork = vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), MAINNET_STARTING_BLOCK);
         HelperConfig config = new HelperConfig();
-        (everest, link, priceFeed, automation) = config.activeNetworkConfig();
+        (, link, linkUsdFeed, registry, registrar) = config.activeNetworkConfig();
+        everest = new MockEverestConsumer(link);
 
-        /// @dev mints total supply to msg.sender (deployer)
-        MockLinkToken(link).initializeMockLinkToken();
+        /// @dev deploy InitialImplementation
+        InitialImplementation initialImplementation = new InitialImplementation();
 
-        MockAutomationConsumer(automation).setMinBalance(AUTOMATION_MIN_BALANCE);
+        /// @dev deploy CompliantProxy
+        compliantProxy = new CompliantProxy(address(initialImplementation), proxyDeployer);
 
-        compliant = new Compliant(everest, link, priceFeed, automation, forwarder, upkeepId);
+        /// @dev register automation
+        _registerAutomation(address(compliantProxy), address(everest));
 
-        LinkTokenInterface(link).transfer(user, USER_LINK_BALANCE);
+        /// @dev get forwarder and upkeepId
+        forwarder = IAutomationRegistryMaster(registry).getForwarder(upkeepId);
 
-        vm.stopPrank();
+        /// @dev deploy Compliant
+        vm.prank(deployer);
+        compliant = new Compliant(address(everest), link, linkUsdFeed, forwarder, upkeepId, address(compliantProxy));
+
+        /// @dev upgradeToAndCall - set Compliant to new implementation
+        address proxyAdmin = compliantProxy.getProxyAdmin();
+        vm.prank(proxyDeployer);
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(compliantProxy)), address(compliant), ""
+        );
+
+        /// @dev set CompliantProxyAdmin to address(0) - making its last upgrade final and immutable
+        vm.prank(proxyDeployer);
+        ProxyAdmin(proxyAdmin).renounceOwnership();
+        assertEq(ProxyAdmin(proxyAdmin).owner(), address(0));
+
+        /// @dev deal LINK to user
+        deal(link, user, USER_LINK_BALANCE);
     }
 
     /// @notice Empty test function to ignore file in coverage report
@@ -71,5 +107,44 @@ contract BaseTest is Test {
 
         Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
         assertTrue(request.isPending);
+    }
+
+    /// @dev register Chainlink log trigger automation
+    function _registerAutomation(address upkeepContract, address triggerContract) internal {
+        uint256 linkAmount = 3e18;
+        deal(link, deployer, linkAmount);
+
+        LogTriggerConfig memory logTrigger = LogTriggerConfig({
+            contractAddress: triggerContract,
+            filterSelector: 2, // Filter only on topic 1 (_revealer)
+            topic0: keccak256("Fulfilled(bytes32,address,address,uint8,uint40)"),
+            topic1: bytes32(uint256(uint160(upkeepContract))),
+            topic2: bytes32(0),
+            topic3: bytes32(0)
+        });
+
+        RegistrationParams memory params = RegistrationParams({
+            name: "",
+            encryptedEmail: hex"",
+            upkeepContract: upkeepContract,
+            gasLimit: 5000000,
+            adminAddress: msg.sender,
+            triggerType: 1, // log trigger
+            checkData: hex"",
+            triggerConfig: abi.encode(logTrigger),
+            offchainConfig: hex"",
+            amount: uint96(linkAmount)
+        });
+
+        /// @dev prank registrar owner to enable automatic log trigger registrations
+        /// @notice this is needed because automatic log trigger registrations are not enabled for all on mainnet
+        vm.prank(IAutomationRegistrar(registrar).owner());
+        /// 1 = log trigger automation, 2 = ENABLED_ALL
+        IAutomationRegistrar(registrar).setTriggerConfig(1, 2, type(uint32).max);
+
+        vm.prank(deployer);
+        LinkTokenInterface(link).approve(registrar, linkAmount);
+        vm.prank(deployer);
+        upkeepId = IAutomationRegistrar(registrar).registerUpkeep(params);
     }
 }
