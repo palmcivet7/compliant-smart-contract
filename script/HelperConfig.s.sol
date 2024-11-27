@@ -21,9 +21,11 @@ contract HelperConfig is Script {
     struct NetworkConfig {
         address everest;
         address link;
-        address priceFeed;
+        address linkUsdFeed;
         address automation;
         address registrar;
+        address swapRouter;
+        address linkEthFeed;
     }
 
     NetworkConfig public activeNetworkConfig;
@@ -54,9 +56,11 @@ contract HelperConfig is Script {
         return NetworkConfig({
             everest: 0x2465e36f7fe01a3cC88906cC00D0486AA03dd200, // deployed mock
             link: 0x779877A7B0D9E8603169DdbD7836e478b4624789,
-            priceFeed: 0xc59E3633BAAC79493d908e63626716e204A45EdF,
+            linkUsdFeed: 0xc59E3633BAAC79493d908e63626716e204A45EdF,
             automation: 0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad,
-            registrar: 0xb0E49c5D0d05cbc241d68c05BC5BA1d1B7B72976
+            registrar: 0xb0E49c5D0d05cbc241d68c05BC5BA1d1B7B72976,
+            swapRouter: 0xB26B2De65D07eBB5E54C7F6282424D3be670E1f0,
+            linkEthFeed: 0x42585eD362B3f1BCa95c640FdFf35Ef899212734
         });
     }
 
@@ -69,9 +73,11 @@ contract HelperConfig is Script {
         return NetworkConfig({
             everest: address(mockEverest),
             link: address(mockLink),
-            priceFeed: address(mockPriceFeed),
+            linkUsdFeed: address(mockPriceFeed),
             automation: address(mockAutomation),
-            registrar: address(0)
+            registrar: address(0),
+            swapRouter: address(0),
+            linkEthFeed: address(0)
         });
     }
 }

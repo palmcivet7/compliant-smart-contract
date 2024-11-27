@@ -9,7 +9,7 @@ contract DeployMockEverestConsumer is Script {
     function run() external returns (MockEverestConsumer) {
         vm.startBroadcast();
         HelperConfig config = new HelperConfig();
-        (, address link,,) = config.activeNetworkConfig();
+        (, address link,,,,,) = config.activeNetworkConfig();
         MockEverestConsumer mockEverest = new MockEverestConsumer(link);
         vm.stopBroadcast();
 

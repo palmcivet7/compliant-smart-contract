@@ -9,8 +9,16 @@ contract DeployCompliant is Script {
     function run() external returns (Compliant) {
         vm.startBroadcast();
         HelperConfig config = new HelperConfig();
-        (address everest, address link, address priceFeed, address automation) = config.activeNetworkConfig();
-        Compliant mockEverest = new Compliant(everest, link, priceFeed, automation);
+        (
+            address everest,
+            address link,
+            address priceFeed,
+            address automation,
+            address registrar,
+            address swapRouter,
+            address linkEthFeed
+        ) = config.activeNetworkConfig();
+        Compliant mockEverest = new Compliant(everest, link, priceFeed, automation, registrar, swapRouter, linkEthFeed);
         vm.stopBroadcast();
 
         return (mockEverest);

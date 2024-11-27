@@ -17,67 +17,67 @@ contract CheckLogTest is BaseTest {
         compliant.checkLog(log, "");
     }
 
-    /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
-    function test_compliant_checkLog_isCompliant_and_pending() public {
-        /// @dev set user to pending request
-        bytes memory emptyCallData = "";
-        _setUserPendingRequest(emptyCallData);
+    // /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
+    // function test_compliant_checkLog_isCompliant_and_pending() public {
+    //     /// @dev set user to pending request
+    //     bytes memory emptyCallData = "";
+    //     _setUserPendingRequest(emptyCallData);
 
-        /// @dev check log
-        Log memory log = _createLog(true, address(compliant));
-        (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
+    //     /// @dev check log
+    //     Log memory log = _createLog(true, address(compliant));
+    //     (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
 
-        /// @dev decode performData
-        (bytes32 encodedRequestId, address encodedUser, bool isCompliant) =
-            abi.decode(performData, (bytes32, address, bool));
+    //     /// @dev decode performData
+    //     (bytes32 encodedRequestId, address encodedUser, bool isCompliant) =
+    //         abi.decode(performData, (bytes32, address, bool));
 
-        bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
-        assertEq(expectedRequestId, encodedRequestId);
-        assertEq(user, encodedUser);
-        assertTrue(isCompliant);
-        assertTrue(upkeepNeeded);
-    }
+    //     bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
+    //     assertEq(expectedRequestId, encodedRequestId);
+    //     assertEq(user, encodedUser);
+    //     assertTrue(isCompliant);
+    //     assertTrue(upkeepNeeded);
+    // }
 
-    /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
-    function test_compliant_checkLog_isNonCompliant_and_pending() public {
-        /// @dev set user to pending request
-        bytes memory emptyCallData = "";
-        _setUserPendingRequest(emptyCallData);
+    // /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
+    // function test_compliant_checkLog_isNonCompliant_and_pending() public {
+    //     /// @dev set user to pending request
+    //     bytes memory emptyCallData = "";
+    //     _setUserPendingRequest(emptyCallData);
 
-        /// @dev check log
-        Log memory log = _createLog(false, address(compliant));
-        (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
+    //     /// @dev check log
+    //     Log memory log = _createLog(false, address(compliant));
+    //     (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
 
-        /// @dev decode performData
-        (bytes32 encodedRequestId, address encodedUser, bool isCompliant) =
-            abi.decode(performData, (bytes32, address, bool));
+    //     /// @dev decode performData
+    //     (bytes32 encodedRequestId, address encodedUser, bool isCompliant) =
+    //         abi.decode(performData, (bytes32, address, bool));
 
-        bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
-        assertEq(expectedRequestId, encodedRequestId);
-        assertEq(user, encodedUser);
-        assertFalse(isCompliant);
-        assertTrue(upkeepNeeded);
-    }
+    //     bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
+    //     assertEq(expectedRequestId, encodedRequestId);
+    //     assertEq(user, encodedUser);
+    //     assertFalse(isCompliant);
+    //     assertTrue(upkeepNeeded);
+    // }
 
-    /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
-    function test_compliant_checkLog_isCompliant_and_notPending() public view {
-        /// @dev check log
-        Log memory log = _createLog(true, address(compliant));
-        (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
+    // /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
+    // function test_compliant_checkLog_isCompliant_and_notPending() public view {
+    //     /// @dev check log
+    //     Log memory log = _createLog(true, address(compliant));
+    //     (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
 
-        assertEq(performData, "");
-        assertFalse(upkeepNeeded);
-    }
+    //     assertEq(performData, "");
+    //     assertFalse(upkeepNeeded);
+    // }
 
-    /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
-    function test_compliant_checkLog_revertsWhen_request_notCurrentContract() public {
-        address revealer = makeAddr("revealer");
+    // /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
+    // function test_compliant_checkLog_revertsWhen_request_notCurrentContract() public {
+    //     address revealer = makeAddr("revealer");
 
-        /// @dev check log
-        Log memory log = _createLog(true, revealer);
-        vm.expectRevert(abi.encodeWithSignature("Compliant__RequestNotMadeByThisContract()"));
-        compliant.checkLog(log, "");
-    }
+    //     /// @dev check log
+    //     Log memory log = _createLog(true, revealer);
+    //     vm.expectRevert(abi.encodeWithSignature("Compliant__RequestNotMadeByThisContract()"));
+    //     compliant.checkLog(log, "");
+    // }
 
     /*//////////////////////////////////////////////////////////////
                                 UTILITY

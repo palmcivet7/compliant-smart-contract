@@ -15,38 +15,50 @@ contract BaseTest is Test {
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
     uint256 internal constant USER_LINK_BALANCE = 10 * 1e18;
-    uint96 internal constant AUTOMATION_MIN_BALANCE = 1e17;
+    uint256 internal constant DEPLOYER_LINK_BALANCE = 5 * 1e18;
+    uint256 internal constant DEPLOYER_BALANCE = 1e18;
+    uint256 internal constant STARTING_BLOCK = 7155638;
 
     Compliant internal compliant;
     address internal everest;
     address internal link;
-    address internal priceFeed;
+    address internal linkUsdFeed;
     address internal automation;
-    address internal forwarder = makeAddr("forwarder");
-    uint256 internal claSubId = 1;
+    address internal registrar;
+    address internal swapRouter;
+    address internal linkEthFeed;
 
-    address internal deployer = makeAddr("deployer");
+    // address internal deployer = makeAddr("deployer");
+    address internal deployer = vm.envAddress("DEPLOYER_ADDRESS");
     address internal user = makeAddr("user");
+
+    uint256 internal ethSepoliaFork;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
     //////////////////////////////////////////////////////////////*/
     function setUp() public virtual {
-        vm.startPrank(deployer);
+        /// @dev fork eth sepolia
+        ethSepoliaFork = vm.createSelectFork(vm.envString("SEPOLIA_RPC_URL"), STARTING_BLOCK);
 
+        /// @dev get Compliant constructor args from HelperConfig
         HelperConfig config = new HelperConfig();
-        (everest, link, priceFeed, automation) = config.activeNetworkConfig();
+        (everest, link, linkUsdFeed, automation, registrar, swapRouter, linkEthFeed) = config.activeNetworkConfig();
 
-        /// @dev mints total supply to msg.sender (deployer)
-        MockLinkToken(link).initializeMockLinkToken();
+        /// @dev deal LINK to user
+        deal(link, user, USER_LINK_BALANCE);
 
-        MockAutomationConsumer(automation).setMinBalance(AUTOMATION_MIN_BALANCE);
+        /// @dev deal LINK to deployer
+        deal(link, deployer, DEPLOYER_LINK_BALANCE);
 
-        compliant = new Compliant(everest, link, priceFeed, automation, forwarder, claSubId);
+        /// @dev deal ETH to deployer
+        vm.deal(deployer, DEPLOYER_BALANCE);
 
-        LinkTokenInterface(link).transfer(user, USER_LINK_BALANCE);
-
-        vm.stopPrank();
+        /// @dev deploy Compliant
+        vm.prank(deployer);
+        compliant = new Compliant{value: DEPLOYER_BALANCE}(
+            everest, link, linkUsdFeed, automation, registrar, swapRouter, linkEthFeed
+        );
     }
 
     /// @notice Empty test function to ignore file in coverage report
@@ -65,7 +77,8 @@ contract BaseTest is Test {
     /// @dev set the user to pending request
     function _setUserPendingRequest(bytes memory compliantCalldata) internal {
         uint256 amount = compliant.getFeeWithAutomation();
-        bytes memory data = abi.encode(user, true, compliantCalldata);
+        bool isAutomation = true;
+        bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
         vm.prank(user);
         LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
 

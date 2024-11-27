@@ -20,7 +20,7 @@ contract PerformUpkeepTest is BaseTest {
         bytes memory performData = abi.encode(requestId, user, true);
 
         vm.recordLogs();
-        vm.prank(forwarder);
+        vm.prank(compliant.getForwarder());
         compliant.performUpkeep(performData);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -64,7 +64,7 @@ contract PerformUpkeepTest is BaseTest {
         bytes memory performData = abi.encode(requestId, user, false);
 
         vm.recordLogs();
-        vm.prank(forwarder);
+        vm.prank(compliant.getForwarder());
         compliant.performUpkeep(performData);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();

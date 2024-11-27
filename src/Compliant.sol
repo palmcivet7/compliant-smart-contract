@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {console2} from "forge-std/Test.sol";
+
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 import {ILogAutomation, Log} from "@chainlink/contracts/src/v0.8/automation/interfaces/ILogAutomation.sol";
@@ -12,6 +14,7 @@ import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/I
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IAutomationRegistrar, RegistrationParams} from "./interfaces/IAutomationRegistrar.sol";
+import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
 contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
@@ -30,6 +33,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     error Compliant__PendingRequestExists(address pendingRequestedAddress);
     error Compliant__OnlyForwarder();
     error Compliant__RequestNotMadeByThisContract();
+    error Compliant__InsufficientEthForLinkSwap(uint256 requiredAmount);
 
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
@@ -53,13 +57,13 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @dev LINK token contract
     LinkTokenInterface internal immutable i_link;
     /// @dev Chainlink PriceFeed for LINK/USD
-    AggregatorV3Interface internal immutable i_priceFeed;
+    AggregatorV3Interface internal immutable i_linkUsdFeed;
     /// @dev Chainlink Automation Registry
     IAutomationRegistryMaster internal immutable i_automation;
     /// @dev Chainlink Automation forwarder
     address internal immutable i_forwarder;
-    /// @dev Chainlink Automation subscription ID
-    uint256 internal immutable i_claSubId;
+    /// @dev Chainlink Automation upkeep/subscription ID
+    uint256 internal immutable i_upkeepId;
 
     /// @dev tracks the accumulated fees for this contract in LINK
     uint256 internal s_compliantFeesInLink;
@@ -88,16 +92,57 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     //////////////////////////////////////////////////////////////*/
     /// @param everest Everest Chainlink consumer
     /// @param link LINK token
-    /// @param priceFeed LINK/USD Chainlink PriceFeed
+    /// @param linkUsdFeed LINK/USD Chainlink PriceFeed
     /// @param automation Chainlink Automation registry
     /// @param registrar Chainlink Automation registrar
-    constructor(address everest, address link, address priceFeed, address automation, address registrar)
-        Ownable(msg.sender)
-    {
+    constructor(
+        address everest,
+        address link,
+        address linkUsdFeed,
+        address automation,
+        address registrar,
+        address swapRouter,
+        address linkEthFeed
+    ) payable Ownable(msg.sender) {
         i_everest = IEverestConsumer(everest);
         i_link = LinkTokenInterface(link);
-        i_priceFeed = AggregatorV3Interface(priceFeed);
+        i_linkUsdFeed = AggregatorV3Interface(linkUsdFeed);
         i_automation = IAutomationRegistryMaster(automation);
+
+        uint256 slippageTolerance = 15;
+        uint256 linkEthPrice = _getLatestPrice(linkEthFeed);
+        // Step 2: Define the exact amount of LINK we want (e.g., 3 LINK)
+        uint256 desiredLink = 1e18; // 1 LINK (18 decimals)
+
+        // Step 3: Calculate the maximum ETH required for the swap
+        uint256 maxEth = (desiredLink * linkEthPrice) / 1e18; // ETH required (18 decimals)
+
+        console2.log("linkEthPrice:", linkEthPrice); // 5006198352205070
+        console2.log("desiredLink:", desiredLink);
+        console2.log("maxEth:", maxEth);
+
+        if (maxEth > msg.value) revert Compliant__InsufficientEthForLinkSwap(maxEth);
+
+        address[] memory path = new address[](2);
+        path[0] = IUniswapV2Router02(swapRouter).WETH();
+        path[1] = link;
+
+        uint256[] memory amounts = IUniswapV2Router02(swapRouter).swapETHForExactTokens{value: msg.value}(
+            desiredLink, // Exact amount of LINK to receive
+            path,
+            address(this), // Send LINK to this contract
+            block.timestamp
+        );
+
+        // Refund any unused ETH
+        if (msg.value > amounts[0]) {
+            (bool refundSuccess,) = msg.sender.call{value: msg.value - amounts[0]}("");
+            require(refundSuccess, "Refund failed");
+        }
+
+        // swap msg.value for link
+        // router.swapETHForExactTokens
+        // send excess eth back to deployer
 
         RegistrationParams memory params = RegistrationParams({
             name: "",
@@ -109,13 +154,13 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
             checkData: hex"",
             triggerConfig: hex"",
             offchainConfig: hex"",
-            amount: 3000000000000000000 // amount of link to fund sub with
+            amount: 1e18 // amount of link to fund sub with 3000000000000000000
         });
 
         LinkTokenInterface(link).approve(registrar, params.amount);
         uint256 upkeepId = IAutomationRegistrar(registrar).registerUpkeep(params);
         if (upkeepId != 0) {
-            i_claSubId = upkeepId;
+            i_upkeepId = upkeepId;
             i_forwarder = i_automation.getForwarder(upkeepId);
         } else {
             revert Compliant__AutomationRegistrationFailed();
@@ -268,7 +313,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
         uint256 totalFee = compliantFeeInLink + everestFeeInLink;
 
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+        uint96 automationFeeInLink = i_automation.getMinBalance(i_upkeepId);
 
         if (isAutomated) {
             totalFee += automationFeeInLink;
@@ -281,7 +326,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         }
 
         if (isAutomated) {
-            i_automation.addFunds(i_claSubId, automationFeeInLink);
+            i_automation.addFunds(i_upkeepId, automationFeeInLink);
         }
 
         i_link.approve(address(i_everest), everestFeeInLink);
@@ -300,15 +345,15 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return kycRequest.isKYCUser;
     }
 
-    /// @dev returns the latest LINK/USD price
-    function _getLatestPrice() internal view returns (uint256) {
-        (, int256 price,,,) = i_priceFeed.latestRoundData();
+    /// @dev returns the latest price
+    function _getLatestPrice(address priceFeed) internal view returns (uint256) {
+        (, int256 price,,,) = AggregatorV3Interface(priceFeed).latestRoundData();
         return uint256(price);
     }
 
     /// @dev calculates the fee for this contract
     function _calculateCompliantFee() internal view returns (uint256) {
-        return (COMPLIANT_FEE * WAD_PRECISION) / _getLatestPrice();
+        return (COMPLIANT_FEE * WAD_PRECISION) / _getLatestPrice(address(i_linkUsdFeed));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -330,7 +375,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @notice returns the fee for a KYC request with subsequent automated logic
     function getFeeWithAutomation() external view returns (uint256) {
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_claSubId);
+        uint96 automationFeeInLink = i_automation.getMinBalance(i_upkeepId);
 
         return getFee() + automationFeeInLink;
     }
@@ -349,7 +394,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     }
 
     function getPriceFeed() external view returns (AggregatorV3Interface) {
-        return i_priceFeed;
+        return i_linkUsdFeed;
     }
 
     function getAutomation() external view returns (IAutomationRegistryMaster) {
@@ -360,8 +405,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return i_forwarder;
     }
 
-    function getClaSubId() external view returns (uint256) {
-        return i_claSubId;
+    function getUpkeepId() external view returns (uint256) {
+        return i_upkeepId;
     }
 
     function getPendingRequest(address user) external view returns (PendingRequest memory) {

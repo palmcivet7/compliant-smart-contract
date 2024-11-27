@@ -10,7 +10,7 @@ contract GetFeeTest is BaseTest {
     function test_compliant_getFee() public {
         /// @dev set the price of LINK to $1
         int256 oneDollar = 100_000_000;
-        MockV3Aggregator(priceFeed).updateAnswer(oneDollar);
+        MockV3Aggregator(linkUsdFeed).updateAnswer(oneDollar);
 
         /// @dev so that we can accurately calculate our expected fee is 50c worth of LINK
         uint256 totalFee = compliant.getFee();
