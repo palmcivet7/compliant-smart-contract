@@ -14,10 +14,11 @@ contract BaseTest is Test {
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
-    uint256 internal constant USER_LINK_BALANCE = 10 * 1e18;
-    uint256 internal constant DEPLOYER_LINK_BALANCE = 5 * 1e18;
+    uint256 internal constant USER_LINK_BALANCE = 10e18;
     uint256 internal constant DEPLOYER_BALANCE = 1e18;
+
     uint256 internal constant STARTING_BLOCK = 7155638;
+    uint256 internal constant MAINNET_STARTING_BLOCK = 21278732;
 
     Compliant internal compliant;
     address internal everest;
@@ -33,23 +34,27 @@ contract BaseTest is Test {
     address internal user = makeAddr("user");
 
     uint256 internal ethSepoliaFork;
+    uint256 internal ethMainnetFork;
+
+    MockEverestConsumer internal everestConsumer;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
     //////////////////////////////////////////////////////////////*/
     function setUp() public virtual {
         /// @dev fork eth sepolia
-        ethSepoliaFork = vm.createSelectFork(vm.envString("SEPOLIA_RPC_URL"), STARTING_BLOCK);
+        // ethSepoliaFork = vm.createSelectFork(vm.envString("SEPOLIA_RPC_URL"), STARTING_BLOCK);
+        ethMainnetFork = vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), MAINNET_STARTING_BLOCK);
 
         /// @dev get Compliant constructor args from HelperConfig
         HelperConfig config = new HelperConfig();
         (everest, link, linkUsdFeed, automation, registrar, swapRouter, linkEthFeed) = config.activeNetworkConfig();
 
+        /// @dev deploy mock Everest consumer
+        everestConsumer = new MockEverestConsumer(link);
+
         /// @dev deal LINK to user
         deal(link, user, USER_LINK_BALANCE);
-
-        /// @dev deal LINK to deployer
-        deal(link, deployer, DEPLOYER_LINK_BALANCE);
 
         /// @dev deal ETH to deployer
         vm.deal(deployer, DEPLOYER_BALANCE);
@@ -57,7 +62,7 @@ contract BaseTest is Test {
         /// @dev deploy Compliant
         vm.prank(deployer);
         compliant = new Compliant{value: DEPLOYER_BALANCE}(
-            everest, link, linkUsdFeed, automation, registrar, swapRouter, linkEthFeed
+            address(everestConsumer), link, linkUsdFeed, automation, registrar, swapRouter, linkEthFeed
         );
     }
 
