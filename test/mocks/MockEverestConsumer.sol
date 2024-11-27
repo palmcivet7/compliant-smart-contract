@@ -3,8 +3,15 @@
 pragma solidity 0.8.24;
 
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
 contract MockEverestConsumer {
+    /*//////////////////////////////////////////////////////////////
+                           TYPE DECLARATIONS
+    //////////////////////////////////////////////////////////////*/
+    using SafeERC20 for LinkTokenInterface;
+
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -30,13 +37,19 @@ contract MockEverestConsumer {
         uint40 expiration; // 5 bytes - slot 1
     }
 
-    mapping(address revealee => IEverestConsumer.Status status) preSetStatus;
-    mapping(address revealee => uint40 kycTimestamp) preSetKycTimestamp;
+    address internal immutable i_link;
 
-    mapping(bytes32 => Request) private s_requests;
-    mapping(address revealee => Request) internal s_requestsByRevealee;
-    uint256 private s_oraclePayment = 1e17;
+    uint256 internal s_oraclePayment = 1e17;
     bytes32 internal s_latestSentRequestId;
+    mapping(bytes32 => Request) internal s_requests;
+    mapping(address revealee => Request) internal s_requestsByRevealee;
+
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+    constructor(address link) {
+        i_link = link;
+    }
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -73,6 +86,8 @@ contract MockEverestConsumer {
             status = IEverestConsumer.Status.NotFound;
             kycTimestamp = 0;
         }
+
+        LinkTokenInterface(i_link).transferFrom(msg.sender, address(this), s_oraclePayment);
 
         emit Fulfilled(requestId, msg.sender, _revealee, status, kycTimestamp);
     }

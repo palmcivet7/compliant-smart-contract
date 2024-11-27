@@ -50,8 +50,8 @@ contract HelperConfig is Script {
     function getEthMainnetConfig() public pure returns (NetworkConfig memory) {}
 
     function getOrCreateAnvilEthConfig() public returns (NetworkConfig memory) {
-        MockEverestConsumer mockEverest = new MockEverestConsumer();
         MockLinkToken mockLink = new MockLinkToken();
+        MockEverestConsumer mockEverest = new MockEverestConsumer(address(mockLink));
         MockV3Aggregator mockPriceFeed = new MockV3Aggregator(DECIMALS, INITIAL_ANSWER);
         MockAutomationConsumer mockAutomation = new MockAutomationConsumer(address(mockLink));
 
