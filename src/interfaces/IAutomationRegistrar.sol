@@ -14,6 +14,16 @@ struct RegistrationParams {
     uint96 amount;
 }
 
+struct LogTriggerConfig {
+    address contractAddress;
+    uint8 filterSelector;
+    bytes32 topic0;
+    bytes32 topic1;
+    bytes32 topic2;
+    bytes32 topic3;
+}
+
 interface IAutomationRegistrar {
     function registerUpkeep(RegistrationParams calldata requestParams) external returns (uint256);
+    function getConfig() external view returns (address keeperRegistry, uint256 minLINKJuels);
 }

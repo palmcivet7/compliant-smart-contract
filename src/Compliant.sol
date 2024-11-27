@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {console2} from "forge-std/Test.sol";
-
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 import {ILogAutomation, Log} from "@chainlink/contracts/src/v0.8/automation/interfaces/ILogAutomation.sol";
@@ -13,7 +11,7 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IAutomationRegistrar, RegistrationParams} from "./interfaces/IAutomationRegistrar.sol";
+import {IAutomationRegistrar, RegistrationParams, LogTriggerConfig} from "./interfaces/IAutomationRegistrar.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
@@ -95,6 +93,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @param linkUsdFeed LINK/USD Chainlink PriceFeed
     /// @param automation Chainlink Automation registry
     /// @param registrar Chainlink Automation registrar
+    /// @param swapRouter Uniswap V2 Router
+    /// @param linkEthFeed LINK/ETH Chainlink PriceFeed
     constructor(
         address everest,
         address link,
@@ -109,40 +109,37 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         i_linkUsdFeed = AggregatorV3Interface(linkUsdFeed);
         i_automation = IAutomationRegistryMaster(automation);
 
-        uint256 slippageTolerance = 15;
+        /// @dev get the price of LINK in ETH with 18 decimals
         uint256 linkEthPrice = _getLatestPrice(linkEthFeed);
-        // Step 2: Define the exact amount of LINK we want (e.g., 3 LINK)
-        uint256 desiredLink = 1e18; // 1 LINK (18 decimals)
 
-        // Step 3: Calculate the maximum ETH required for the swap
-        uint256 maxEth = (desiredLink * linkEthPrice) / 1e18; // ETH required (18 decimals)
+        /// @dev the amount of LINK we want to receive from the swap to fund Automation registration
+        // (, uint256 linkAmount) = IAutomationRegistrar(registrar).getConfig();
+        uint256 linkAmount = 1e18;
 
-        console2.log("linkEthPrice:", linkEthPrice); // 5006198352205070
-        console2.log("desiredLink:", desiredLink);
-        console2.log("maxEth:", maxEth);
-
+        /// @dev calculate the base ETH required for the swap and account for 2% slippage
+        uint256 baseEth = (linkAmount * linkEthPrice) / 1e18;
+        uint256 maxEth = (baseEth * 102) / 100; // 2% slippage
         if (maxEth > msg.value) revert Compliant__InsufficientEthForLinkSwap(maxEth);
 
+        /// @dev swap msg.value ETH for LINK
         address[] memory path = new address[](2);
         path[0] = IUniswapV2Router02(swapRouter).WETH();
         path[1] = link;
-
-        uint256[] memory amounts = IUniswapV2Router02(swapRouter).swapETHForExactTokens{value: msg.value}(
-            desiredLink, // Exact amount of LINK to receive
-            path,
-            address(this), // Send LINK to this contract
-            block.timestamp
+        IUniswapV2Router02(swapRouter).swapETHForExactTokens{value: maxEth}(
+            linkAmount, path, address(this), block.timestamp
         );
+        /// @dev refund any excess ETH
+        if (address(this).balance > 0) payable(msg.sender).transfer(address(this).balance);
 
-        // Refund any unused ETH
-        if (msg.value > amounts[0]) {
-            (bool refundSuccess,) = msg.sender.call{value: msg.value - amounts[0]}("");
-            require(refundSuccess, "Refund failed");
-        }
-
-        // swap msg.value for link
-        // router.swapETHForExactTokens
-        // send excess eth back to deployer
+        /// @dev create trigger config and registration params for Automation registration
+        LogTriggerConfig memory logTrigger = LogTriggerConfig({
+            contractAddress: everest,
+            filterSelector: 2, // Filter only on topic 1 (_revealer)
+            topic0: keccak256("Fulfilled(bytes32,address,address,uint8,uint40)"),
+            topic1: bytes32(uint256(uint160(address(this)))), // address(this) as _revealer,
+            topic2: bytes32(0), // Empty
+            topic3: bytes32(0) // Empty
+        });
 
         RegistrationParams memory params = RegistrationParams({
             name: "",
@@ -152,11 +149,12 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
             adminAddress: msg.sender,
             triggerType: 1, // log trigger
             checkData: hex"",
-            triggerConfig: hex"",
+            triggerConfig: abi.encode(logTrigger),
             offchainConfig: hex"",
-            amount: 1e18 // amount of link to fund sub with 3000000000000000000
+            amount: uint96(linkAmount)
         });
 
+        /// @dev register Automation and store upkeepId and forwarder as immutable
         LinkTokenInterface(link).approve(registrar, params.amount);
         uint256 upkeepId = IAutomationRegistrar(registrar).registerUpkeep(params);
         if (upkeepId != 0) {
