@@ -31,3 +31,13 @@ Users can interact with the Compliant contract in two ways:
 1. Call `LINK.transferAndCall()` on the LINK token address, passing the Compliant contract's address, fee amount, and calldata. The calldata should include the address to query and instructions on whether to automate a response to the fulfilled compliance check request. The fee amount to pass can be read from either `Compliant.getFee()` or `Compliant.getFeeWithAutomation()` depending on if the request is intended to use Automation or not. `transferAndCall()` allows the user to request the KYC status in a single transaction. Combining it with the automation option allows the user to request the KYC status and execute subsequent logic based on the immediate result in a single transaction.
 
 2. Call `LINK.approve()` on the LINK token address, passing the Compliant contract's address and fee amount. Then call `Compliant.requestKycStatus()`, passing the address to query and instructions on whether to automate a response to the fulfilled compliance check request.
+
+---
+
+## Design Choices for Automation values
+
+There are two obvious viable design choices for handling Chainlink Automation values (registry, forwarder, upkeepId).
+
+1. Store them in storage and have a trusted admin set them. The downside of this is the added gas cost to the user for reading from storage. The benefit of this is simplicity and transparency.
+
+2. Use a proxy address and have the Automation values immutable in the bytecode. The benefit of this is the cheaper gas cost for the user not having to read from storage. The downside is the added complexity and added trust the admin of the contract will not deploy a malicious implementation.
