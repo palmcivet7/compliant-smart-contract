@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {Test, Vm} from "forge-std/Test.sol";
+import {Test, Vm, console2} from "forge-std/Test.sol";
 import {Compliant} from "../../src/Compliant.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {MockLinkToken} from "./mocks/MockLinkToken.sol";
@@ -24,7 +24,7 @@ contract BaseTest is Test {
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
     uint256 internal constant MAINNET_STARTING_BLOCK = 21278732;
-    uint256 internal constant USER_LINK_BALANCE = 10 * 1e18;
+    uint256 internal constant USER_LINK_BALANCE = 100 * 1e18;
     uint96 internal constant AUTOMATION_MIN_BALANCE = 1e17;
 
     CompliantProxy internal compliantProxy;
@@ -73,9 +73,7 @@ contract BaseTest is Test {
         }
 
         /// @dev register automation
-        _registerAutomation(address(compliantProxy), address(everest));
-
-        /// @dev get forwarder and upkeepId
+        upkeepId = _registerAutomation(address(compliantProxy), address(everest));
         forwarder = IAutomationRegistryMaster(registry).getForwarder(upkeepId);
 
         /// @dev deploy Compliant
@@ -115,14 +113,16 @@ contract BaseTest is Test {
         uint256 amount = compliant.getFeeWithAutomation();
         bytes memory data = abi.encode(user, true, compliantCalldata);
         vm.prank(user);
-        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
+        LinkTokenInterface(link).transferAndCall(address(compliantProxy), amount, data);
 
-        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        (, bytes memory retData) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+        Compliant.PendingRequest memory request = abi.decode(retData, (Compliant.PendingRequest));
         assertTrue(request.isPending);
     }
 
     /// @dev register Chainlink log trigger automation
-    function _registerAutomation(address upkeepContract, address triggerContract) internal {
+    function _registerAutomation(address upkeepContract, address triggerContract) internal returns (uint256) {
         uint256 linkAmount = 3e18;
         deal(link, deployer, linkAmount);
 
@@ -157,6 +157,6 @@ contract BaseTest is Test {
         vm.prank(deployer);
         LinkTokenInterface(link).approve(registrar, linkAmount);
         vm.prank(deployer);
-        upkeepId = IAutomationRegistrar(registrar).registerUpkeep(params);
+        return IAutomationRegistrar(registrar).registerUpkeep(params);
     }
 }

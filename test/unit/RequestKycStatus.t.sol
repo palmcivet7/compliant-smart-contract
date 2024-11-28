@@ -97,4 +97,12 @@ contract RequestKycStatusTest is BaseTest {
         compliant.requestKycStatus(user, true, ""); // true for automation
         vm.stopPrank();
     }
+
+    function test_compliant_requestKycStatus_revertsWhen_notProxy() public {
+        uint256 approvalAmount = compliant.getFeeWithAutomation() * 2;
+        vm.startPrank(user);
+        LinkTokenInterface(link).approve(address(compliant), approvalAmount);
+        vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyProxy()"));
+        compliant.requestKycStatus(user, true, ""); // true for automation
+    }
 }
