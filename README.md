@@ -41,3 +41,14 @@ There are two obvious viable design choices for handling Chainlink Automation va
 1. Store them in storage and have a trusted admin set them. The downside of this is the added gas cost to the user for reading from storage. The benefit of this is simplicity and transparency.
 
 2. Use a proxy address and have the Automation values immutable in the bytecode. The benefit of this is the cheaper gas cost for the user not having to read from storage. The downside is the added complexity and added trust the admin of the contract will not deploy a malicious implementation. The proxy can later be made immutable, but the registry address should probably still be configurable.
+
+## Deployment
+
+This project uses a `TransparentUpgradeableProxy` (`CompliantProxy`) to store Chainlink Automation `forwarder` and `upkeepId` as immutable, saving gas for the end user. This is the deployment steps to ensure this efficient functionality and then immutability of the `Compliant` contract:
+
+- deploy `InitialImplementation`, an essentially blank contract that implements the `ILogAutomation` interface to make it compatible with registering for Chainlink Automation
+- deploy `CompliantProxy`, pointing at the `InitialImplementation`
+- register `CompliantProxy` with Chainlink Automation
+- deploy `Compliant` with immutable `forwarder` and `upkeepId`
+- upgrade `CompliantProxy` to point at `Compliant`
+- renounceOwnership of `CompliantProxy` Admin, ensuring the implementation cannot be changed again
