@@ -56,8 +56,21 @@ contract BaseTest is Test {
         /// @dev deploy InitialImplementation
         InitialImplementation initialImplementation = new InitialImplementation();
 
+        /// @dev record logs to get proxyAdmin contract address
+        vm.recordLogs();
+
         /// @dev deploy CompliantProxy
         compliantProxy = new CompliantProxy(address(initialImplementation), proxyDeployer);
+
+        /// @dev get proxyAdmin contract address from logs
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 eventSignature = keccak256("AdminChanged(address,address)");
+        address proxyAdmin;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == eventSignature) {
+                (, proxyAdmin) = abi.decode(logs[i].data, (address, address));
+            }
+        }
 
         /// @dev register automation
         _registerAutomation(address(compliantProxy), address(everest));
@@ -70,7 +83,6 @@ contract BaseTest is Test {
         compliant = new Compliant(address(everest), link, linkUsdFeed, forwarder, upkeepId, address(compliantProxy));
 
         /// @dev upgradeToAndCall - set Compliant to new implementation
-        address proxyAdmin = compliantProxy.getProxyAdmin();
         vm.prank(proxyDeployer);
         ProxyAdmin(proxyAdmin).upgradeAndCall(
             ITransparentUpgradeableProxy(address(compliantProxy)), address(compliant), ""
