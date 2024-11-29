@@ -162,12 +162,15 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     }
 
     /// @dev continuously simulated by Chainlink offchain Automation nodes
-    /// @notice upkeepNeeded evaluates to true if the Fulfilled log contains a pending requested address
     /// @param log ILogAutomation.Log
+    /// @return upkeepNeeded evaluates to true if the Fulfilled log contains a pending requested address
+    /// @return performData contains fulfilled pending requestId, requestedAddress and if they are compliant
+    /// @notice for some unit tests to run successfully `cannotExecute` modifier should be commented out
     function checkLog(Log calldata log, bytes memory)
         external
         view
         cannotExecute
+        onlyProxy
         returns (bool upkeepNeeded, bytes memory performData)
     {
         bytes32 eventSignature = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
