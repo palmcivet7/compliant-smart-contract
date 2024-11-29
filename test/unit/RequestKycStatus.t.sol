@@ -26,14 +26,8 @@ contract RequestKycStatusTest is BaseTest {
         vm.recordLogs();
 
         uint256 expectedFee = compliant.getFee();
-
-        vm.prank(user);
-        LinkTokenInterface(link).approve(address(compliantProxy), expectedFee);
-        vm.prank(user);
-        (, bytes memory retData) = address(compliantProxy).call(
-            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, false, "") // false for no automation
-        );
-        uint256 actualFee = abi.decode(retData, (uint256));
+        /// @dev call requestKycStatus
+        uint256 actualFee = _requestKycStatus(user, expectedFee, user, false, "");
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -64,14 +58,8 @@ contract RequestKycStatusTest is BaseTest {
         bytes memory compliantCalldata = abi.encode(1);
 
         uint256 expectedFee = compliant.getFeeWithAutomation();
-
-        vm.prank(user);
-        LinkTokenInterface(link).approve(address(compliantProxy), expectedFee);
-        vm.prank(user);
-        (, bytes memory retData) = address(compliantProxy).call(
-            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, true, compliantCalldata) // true for automation
-        );
-        uint256 actualFee = abi.decode(retData, (uint256));
+        /// @dev call requestKycStatus
+        uint256 actualFee = _requestKycStatus(user, expectedFee, user, true, compliantCalldata);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -126,5 +114,27 @@ contract RequestKycStatusTest is BaseTest {
         LinkTokenInterface(link).approve(address(compliant), approvalAmount);
         vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyProxy()"));
         compliant.requestKycStatus(user, true, ""); // true for automation
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                UTILITY
+    //////////////////////////////////////////////////////////////*/
+    function _requestKycStatus(
+        address caller,
+        uint256 linkApprovalAmount,
+        address requestedAddress,
+        bool isAutomation,
+        bytes memory compliantCalldata
+    ) internal returns (uint256) {
+        vm.prank(caller);
+        LinkTokenInterface(link).approve(address(compliantProxy), linkApprovalAmount);
+        vm.prank(caller);
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature(
+                "requestKycStatus(address,bool,bytes)", requestedAddress, isAutomation, compliantCalldata
+            )
+        );
+        uint256 actualFee = abi.decode(retData, (uint256));
+        return actualFee;
     }
 }
