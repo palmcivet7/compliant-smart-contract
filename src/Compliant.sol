@@ -10,11 +10,11 @@ import {IAutomationRegistryConsumer} from
 import {IAutomationForwarder} from "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationForwarder.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
-contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
+contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                            TYPE DECLARATIONS
     //////////////////////////////////////////////////////////////*/
@@ -101,9 +101,14 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @param forwarder Chainlink Automation forwarder
     /// @param upkeepId Chainlink Automation upkeep/subscription ID
     /// @param proxy Compliant Proxy address
-    constructor(address everest, address link, address linkUsdFeed, address forwarder, uint256 upkeepId, address proxy)
-        Ownable(msg.sender)
-    {
+    constructor(
+        address everest,
+        address link,
+        address linkUsdFeed,
+        address forwarder,
+        uint256 upkeepId,
+        address proxy
+    ) {
         i_everest = IEverestConsumer(everest);
         i_link = LinkTokenInterface(link);
         i_linkUsdFeed = AggregatorV3Interface(linkUsdFeed);
@@ -214,11 +219,16 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     }
 
     /// @dev admin function for withdrawing protocol fees
-    function withdrawFees() external onlyOwner onlyProxy {
+    function withdrawFees() external onlyProxy onlyOwner {
         uint256 compliantFeesInLink = s_compliantFeesInLink;
         s_compliantFeesInLink = 0;
 
         i_link.transfer(owner(), compliantFeesInLink);
+    }
+
+    /// @dev admin function for initializing owner after point proxy to this implementation
+    function initialize(address initialOwner) external onlyProxy initializer {
+        __Ownable_init(initialOwner);
     }
 
     /*//////////////////////////////////////////////////////////////

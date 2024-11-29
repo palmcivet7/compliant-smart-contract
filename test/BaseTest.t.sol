@@ -40,6 +40,7 @@ contract BaseTest is Test {
     address internal deployer = vm.envAddress("DEPLOYER_ADDRESS");
     address internal user = makeAddr("user");
     address internal proxyDeployer = makeAddr("proxyDeployer");
+    address internal owner;
 
     uint256 internal ethMainnetFork;
 
@@ -80,10 +81,11 @@ contract BaseTest is Test {
         vm.prank(deployer);
         compliant = new Compliant(address(everest), link, linkUsdFeed, forwarder, upkeepId, address(compliantProxy));
 
-        /// @dev upgradeToAndCall - set Compliant to new implementation
+        /// @dev upgradeToAndCall - set Compliant to new implementation and initialize deployer to owner
+        bytes memory initializeData = abi.encodeWithSignature("initialize(address)", deployer);
         vm.prank(proxyDeployer);
         ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(compliantProxy)), address(compliant), ""
+            ITransparentUpgradeableProxy(address(compliantProxy)), address(compliant), initializeData
         );
 
         /// @dev set CompliantProxyAdmin to address(0) - making its last upgrade final and immutable
@@ -93,6 +95,10 @@ contract BaseTest is Test {
 
         /// @dev deal LINK to user
         deal(link, user, USER_LINK_BALANCE);
+
+        /// @dev assign owner
+        (, bytes memory ownerData) = address(compliantProxy).call(abi.encodeWithSignature("owner()"));
+        owner = abi.decode(ownerData, (address));
     }
 
     /// @notice Empty test function to ignore file in coverage report

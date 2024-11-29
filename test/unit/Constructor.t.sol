@@ -11,7 +11,5 @@ contract ConstructorTest is BaseTest {
         assertEq(address(compliant.getLinkUsdFeed()), linkUsdFeed);
         assertEq(address(compliant.getForwarder()), address(forwarder));
         assertEq(compliant.getUpkeepId(), upkeepId);
-
-        assertEq(compliant.owner(), deployer);
     }
 }

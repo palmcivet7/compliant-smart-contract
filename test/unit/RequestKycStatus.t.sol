@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 
 import {BaseTest, Vm, LinkTokenInterface, Compliant, console2} from "../BaseTest.t.sol";
 
+/// review these tests - can be refactored further to improve modularity/readability
 contract RequestKycStatusTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -14,7 +15,7 @@ contract RequestKycStatusTest is BaseTest {
         uint256 approvalAmount = compliant.getFeeWithAutomation() + compliant.getFee();
 
         vm.prank(user);
-        LinkTokenInterface(link).approve(address(compliant), approvalAmount);
+        LinkTokenInterface(link).approve(address(compliantProxy), approvalAmount);
     }
 
     /*//////////////////////////////////////////////////////////////
