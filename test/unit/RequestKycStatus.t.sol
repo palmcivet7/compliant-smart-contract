@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, Vm, LinkTokenInterface, Compliant} from "../BaseTest.t.sol";
+import {BaseTest, Vm, LinkTokenInterface, Compliant, console2} from "../BaseTest.t.sol";
 
 contract RequestKycStatusTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -25,8 +25,15 @@ contract RequestKycStatusTest is BaseTest {
 
         vm.recordLogs();
 
+        uint256 expectedFee = compliant.getFee();
+
         vm.prank(user);
-        uint256 fee = compliant.requestKycStatus(user, false, ""); // false for no automation
+        LinkTokenInterface(link).approve(address(compliantProxy), expectedFee);
+        vm.prank(user);
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, false, "") // false for no automation
+        );
+        uint256 actualFee = abi.decode(retData, (uint256));
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -43,10 +50,10 @@ contract RequestKycStatusTest is BaseTest {
         uint256 linkBalanceAfter = LinkTokenInterface(link).balanceOf(user);
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
-        assertEq(linkBalanceAfter + compliant.getFee(), linkBalanceBefore);
+        assertEq(linkBalanceAfter + expectedFee, linkBalanceBefore);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
-        assertEq(fee, compliant.getFee());
+        assertEq(actualFee, expectedFee);
     }
 
     function test_compliant_requestKycStatus_automation() public {
@@ -56,9 +63,15 @@ contract RequestKycStatusTest is BaseTest {
 
         bytes memory compliantCalldata = abi.encode(1);
 
+        uint256 expectedFee = compliant.getFeeWithAutomation();
+
         vm.prank(user);
-        // could change "" for some dummy data to assert correct data is stored
-        uint256 fee = compliant.requestKycStatus(user, true, compliantCalldata); // true for automation
+        LinkTokenInterface(link).approve(address(compliantProxy), expectedFee);
+        vm.prank(user);
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, true, compliantCalldata) // true for automation
+        );
+        uint256 actualFee = abi.decode(retData, (uint256));
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -76,25 +89,34 @@ contract RequestKycStatusTest is BaseTest {
 
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
-        Compliant.PendingRequest memory pendingRequest = compliant.getPendingRequest(user);
+        (, bytes memory requestRetDataAfter) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+        Compliant.PendingRequest memory pendingRequest = abi.decode(requestRetDataAfter, (Compliant.PendingRequest));
         bool isPending = pendingRequest.isPending;
         bytes memory storedCalldata = pendingRequest.compliantCalldata;
 
         assertTrue(isPending);
         assertEq(storedCalldata, compliantCalldata);
-        assertEq(linkBalanceAfter + compliant.getFeeWithAutomation(), linkBalanceBefore);
+        assertEq(linkBalanceAfter + expectedFee, linkBalanceBefore);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
-        assertEq(fee, compliant.getFeeWithAutomation());
+        assertEq(actualFee, expectedFee);
     }
 
     function test_compliant_requestKycStatus_revertsWhen_userPendingRequest() public {
         uint256 approvalAmount = compliant.getFeeWithAutomation() * 2;
         vm.startPrank(user);
-        LinkTokenInterface(link).approve(address(compliant), approvalAmount);
-        compliant.requestKycStatus(user, true, ""); // true for automation
+        LinkTokenInterface(link).approve(address(compliantProxy), approvalAmount);
+
+        (bool success,) = address(compliantProxy).call(
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, true, "") // true for automation
+        );
+        require(success, "delegate call to requestKycStatus failed");
+
         vm.expectRevert(abi.encodeWithSignature("Compliant__PendingRequestExists(address)", user));
-        compliant.requestKycStatus(user, true, ""); // true for automation
+        (bool success2,) = address(compliantProxy).call(
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, true, "") // true for automation
+        );
         vm.stopPrank();
     }
 
