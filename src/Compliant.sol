@@ -226,7 +226,9 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         i_link.transfer(owner(), compliantFeesInLink);
     }
 
-    /// @dev admin function for initializing owner after point proxy to this implementation
+    /// @dev admin function for initializing owner when upgrading proxy to this implementation
+    /// @notice lack of access control may currently be considered a "known issue"
+    /// although if this is initialized in the same tx/script it is deployed, the issue would be null
     function initialize(address initialOwner) external onlyProxy initializer {
         __Ownable_init(initialOwner);
     }

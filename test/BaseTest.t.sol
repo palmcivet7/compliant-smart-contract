@@ -25,7 +25,6 @@ contract BaseTest is Test {
     //////////////////////////////////////////////////////////////*/
     uint256 internal constant MAINNET_STARTING_BLOCK = 21278732;
     uint256 internal constant USER_LINK_BALANCE = 100 * 1e18;
-    uint96 internal constant AUTOMATION_MIN_BALANCE = 1e17;
 
     CompliantProxy internal compliantProxy;
     Compliant internal compliant;
