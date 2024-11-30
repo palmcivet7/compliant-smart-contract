@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.24;
 
 import {BaseTest, LinkTokenInterface, Compliant} from "../BaseTest.t.sol";
 import {ILogAutomation, Log} from "@chainlink/contracts/src/v0.8/automation/interfaces/ILogAutomation.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 
+/// review this - refactor tests for modularity/readability
+/// consider having function signature/selector for externally accessible functions in a Constants.sol
 contract CheckLogTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
                                  TESTS
@@ -18,14 +19,27 @@ contract CheckLogTest is BaseTest {
     }
 
     /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
+    function test_compliant_checkLog_revertsWhen_notProxy() public {
+        Log memory log = _createLog(true, address(compliant));
+        vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyProxy()"));
+        compliant.checkLog(log, "");
+    }
+
+    /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
     function test_compliant_checkLog_isCompliant_and_pending() public {
         /// @dev set user to pending request
         bytes memory emptyCallData = "";
         _setUserPendingRequest(emptyCallData);
 
         /// @dev check log
-        Log memory log = _createLog(true, address(compliant));
-        (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
+        Log memory log = _createLog(true, address(compliantProxy));
+
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature(
+                "checkLog((uint256,uint256,bytes32,uint256,bytes32,address,bytes32[],bytes),bytes)", log, ""
+            )
+        );
+        (bool upkeepNeeded, bytes memory performData) = abi.decode(retData, (bool, bytes));
 
         /// @dev decode performData
         (bytes32 encodedRequestId, address encodedUser, bool isCompliant) =
@@ -45,8 +59,13 @@ contract CheckLogTest is BaseTest {
         _setUserPendingRequest(emptyCallData);
 
         /// @dev check log
-        Log memory log = _createLog(false, address(compliant));
-        (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
+        Log memory log = _createLog(false, address(compliantProxy));
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature(
+                "checkLog((uint256,uint256,bytes32,uint256,bytes32,address,bytes32[],bytes),bytes)", log, ""
+            )
+        );
+        (bool upkeepNeeded, bytes memory performData) = abi.decode(retData, (bool, bytes));
 
         /// @dev decode performData
         (bytes32 encodedRequestId, address encodedUser, bool isCompliant) =
@@ -60,10 +79,15 @@ contract CheckLogTest is BaseTest {
     }
 
     /// @notice this test will fail unless the cannotExecute modifier is removed from checkLog
-    function test_compliant_checkLog_isCompliant_and_notPending() public view {
+    function test_compliant_checkLog_isCompliant_and_notPending() public {
         /// @dev check log
-        Log memory log = _createLog(true, address(compliant));
-        (bool upkeepNeeded, bytes memory performData) = compliant.checkLog(log, "");
+        Log memory log = _createLog(true, address(compliantProxy));
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature(
+                "checkLog((uint256,uint256,bytes32,uint256,bytes32,address,bytes32[],bytes),bytes)", log, ""
+            )
+        );
+        (bool upkeepNeeded, bytes memory performData) = abi.decode(retData, (bool, bytes));
 
         assertEq(performData, "");
         assertFalse(upkeepNeeded);
@@ -76,7 +100,11 @@ contract CheckLogTest is BaseTest {
         /// @dev check log
         Log memory log = _createLog(true, revealer);
         vm.expectRevert(abi.encodeWithSignature("Compliant__RequestNotMadeByThisContract()"));
-        compliant.checkLog(log, "");
+        (, bytes memory retData) = address(compliantProxy).call(
+            abi.encodeWithSignature(
+                "checkLog((uint256,uint256,bytes32,uint256,bytes32,address,bytes32[],bytes),bytes)", log, ""
+            )
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

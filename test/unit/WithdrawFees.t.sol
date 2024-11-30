@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.24;
 
-import {BaseTest, LinkTokenInterface} from "../BaseTest.t.sol";
+import {BaseTest, LinkTokenInterface, console2} from "../BaseTest.t.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 
 contract WithdrawFeesTest is BaseTest {
@@ -15,28 +15,41 @@ contract WithdrawFeesTest is BaseTest {
         uint256 approvalAmount = compliant.getFee();
 
         vm.prank(user);
-        LinkTokenInterface(link).approve(address(compliant), approvalAmount);
+        LinkTokenInterface(link).approve(address(compliantProxy), approvalAmount);
     }
 
     /*//////////////////////////////////////////////////////////////
                                  TESTS
     //////////////////////////////////////////////////////////////*/
-    function test_compliant_withdrawFees() public {
+    function test_compliant_withdrawFees_success() public {
+        /// @dev call requestKycStatus as user to generate fees
         vm.prank(user);
-        uint256 fee = compliant.requestKycStatus(user, false, ""); // false for no automation
-        uint256 compliantFee = fee - IEverestConsumer(everest).oraclePayment();
+        (, bytes memory feeRetData) = address(compliantProxy).call(
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, false, "")
+        ); // false for no automation
+        uint256 fee = abi.decode(feeRetData, (uint256));
 
-        address owner = compliant.owner();
+        uint256 compliantFee = fee - IEverestConsumer(address(everest)).oraclePayment();
+
         uint256 balanceBefore = LinkTokenInterface(link).balanceOf(owner);
 
-        uint256 feesToWithdrawBefore = compliant.getCompliantFeesToWithdraw();
+        /// @dev assert correct fees to withdraw exists
+        (, bytes memory withdrawDataBefore) =
+            address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
+        uint256 feesToWithdrawBefore = abi.decode(withdrawDataBefore, (uint256));
         assertEq(compliantFee, feesToWithdrawBefore);
 
+        /// @dev withdraw fees
         vm.prank(owner);
-        compliant.withdrawFees();
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
+        require(success, "delegate call to withdrawFees() failed");
 
         uint256 balanceAfter = LinkTokenInterface(link).balanceOf(owner);
-        uint256 feesToWithdrawAfter = compliant.getCompliantFeesToWithdraw();
+
+        (, bytes memory withdrawDataAfter) =
+            address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
+        uint256 feesToWithdrawAfter = abi.decode(withdrawDataAfter, (uint256));
+
         assertEq(feesToWithdrawAfter, 0);
         assertEq(balanceAfter, balanceBefore + compliantFee);
     }
@@ -44,6 +57,12 @@ contract WithdrawFeesTest is BaseTest {
     function test_compliant_withdrawFees_revertsWhen_notOwner() public {
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user));
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
+    }
+
+    function test_compliant_withdrawFees_revertsWhen_notProxy() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyProxy()"));
         compliant.withdrawFees();
     }
 }

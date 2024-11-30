@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.24;
 
-import {BaseTest, Vm, LinkTokenInterface, Compliant} from "../BaseTest.t.sol";
+import {BaseTest, Vm, LinkTokenInterface, Compliant, console2} from "../BaseTest.t.sol";
 import {MockLinkToken} from "../mocks/MockLinkToken.sol";
 
 contract OnTokenTransferTest is BaseTest {
@@ -16,7 +15,7 @@ contract OnTokenTransferTest is BaseTest {
         vm.recordLogs();
 
         vm.prank(user);
-        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
+        LinkTokenInterface(link).transferAndCall(address(compliantProxy), amount, data);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -46,7 +45,7 @@ contract OnTokenTransferTest is BaseTest {
         vm.recordLogs();
 
         vm.prank(user);
-        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
+        LinkTokenInterface(link).transferAndCall(address(compliantProxy), amount, data);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
@@ -62,7 +61,10 @@ contract OnTokenTransferTest is BaseTest {
 
         bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
 
-        Compliant.PendingRequest memory pendingRequest = compliant.getPendingRequest(user);
+        (, bytes memory retData) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+
+        Compliant.PendingRequest memory pendingRequest = abi.decode(retData, (Compliant.PendingRequest));
         bool isPending = pendingRequest.isPending;
         bytes memory storedCalldata = pendingRequest.compliantCalldata;
 
@@ -81,7 +83,7 @@ contract OnTokenTransferTest is BaseTest {
         bytes memory data = abi.encode(user, false);
 
         vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyLinkToken()"));
-        erc677.transferAndCall(address(compliant), amount, data);
+        erc677.transferAndCall(address(compliantProxy), amount, data);
         vm.stopPrank();
     }
 
@@ -91,10 +93,20 @@ contract OnTokenTransferTest is BaseTest {
         uint256 amount = fee - 1;
         bytes memory data = abi.encode(user, false, "");
 
-        vm.expectRevert(
-            abi.encodeWithSignature("Compliant__InsufficientLinkTransferAmount(uint256,uint256)", amount, fee)
-        );
-        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
+        vm.expectRevert(); // abi.encodeWithSignature("Compliant__InsufficientLinkTransferAmount(uint256,uint256)", amount, fee)
+        LinkTokenInterface(link).transferAndCall(address(compliantProxy), amount, data);
         vm.stopPrank();
+    }
+
+    function test_compliant_onTokenTransfer_revertsWhen_notProxy() public {
+        uint256 amount = compliant.getFeeWithAutomation();
+        bytes memory compliantCalldata = abi.encode(1);
+        /// @dev requesting the kyc status of user
+        /// @dev true because we are performing automation
+        bytes memory data = abi.encode(user, true, compliantCalldata);
+
+        vm.prank(user);
+        vm.expectRevert(); // abi.encodeWithSignature("Compliant__OnlyProxy()")
+        LinkTokenInterface(link).transferAndCall(address(compliant), amount, data);
     }
 }

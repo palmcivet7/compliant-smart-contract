@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.24;
 
 import {BaseTest, Vm, Compliant} from "../BaseTest.t.sol";
@@ -10,19 +9,28 @@ contract PerformUpkeepTest is BaseTest {
         bytes memory compliantCalldata = abi.encode(1);
         _setUserPendingRequest(compliantCalldata);
         /// @dev make sure the compliantCalldata stored for the pending request actually has data
-        Compliant.PendingRequest memory pendingRequest = compliant.getPendingRequest(user);
+        (, bytes memory requestRetDataBefore) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+        Compliant.PendingRequest memory pendingRequest = abi.decode(requestRetDataBefore, (Compliant.PendingRequest));
         assertTrue(pendingRequest.compliantCalldata.length > 0);
 
-        uint256 incrementedValueBefore = compliant.getAutomatedIncrement();
+        /// @dev make sure the incremented value hasnt been touched
+        (, bytes memory incrementedRetDataBefore) =
+            address(compliantProxy).call(abi.encodeWithSignature("getAutomatedIncrement()"));
+        uint256 incrementedValueBefore = abi.decode(incrementedRetDataBefore, (uint256));
         assertEq(incrementedValueBefore, 0);
 
+        /// @dev create performData
         bytes32 requestId = bytes32(uint256(uint160(user)));
         bytes memory performData = abi.encode(requestId, user, true);
 
+        /// @dev call performUpkeep
         vm.recordLogs();
         vm.prank(forwarder);
-        compliant.performUpkeep(performData);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
+        require(success, "delegate call to performUpkeep failed");
 
+        /// @dev check logs to make sure expected events are emitted
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 fulfilledEventSignature = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
         bytes32 emittedRequestId;
@@ -43,30 +51,44 @@ contract PerformUpkeepTest is BaseTest {
             }
         }
 
+        /// @dev assert correct event params
         assertEq(requestId, emittedRequestId);
         assertEq(user, emittedUser);
         assertTrue(emittedBool);
         assertTrue(compliantEventEmitted);
 
-        uint256 incrementedValueAfter = compliant.getAutomatedIncrement();
+        /// @dev assert compliant state change has happened
+        (, bytes memory incrementedRetDataAfter) =
+            address(compliantProxy).call(abi.encodeWithSignature("getAutomatedIncrement()"));
+        uint256 incrementedValueAfter = abi.decode(incrementedRetDataAfter, (uint256));
         assertEq(incrementedValueAfter, 1);
 
-        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        /// @dev assert compliantCalldata for request is now empty
+        (, bytes memory requestRetDataAfter) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+        Compliant.PendingRequest memory request = abi.decode(requestRetDataAfter, (Compliant.PendingRequest));
         assertFalse(request.isPending);
         assertEq(request.compliantCalldata.length, 0);
     }
 
     function test_compliant_performUpkeep_isNonCompliant() public {
-        uint256 incrementedValueBefore = compliant.getAutomatedIncrement();
+        /// @dev make sure the incremented value hasnt been touched
+        (, bytes memory incrementedRetDataBefore) =
+            address(compliantProxy).call(abi.encodeWithSignature("getAutomatedIncrement()"));
+        uint256 incrementedValueBefore = abi.decode(incrementedRetDataBefore, (uint256));
         assertEq(incrementedValueBefore, 0);
 
+        /// @dev create performData
         bytes32 requestId = bytes32(uint256(uint160(user)));
-        bytes memory performData = abi.encode(requestId, user, false);
+        bytes memory performData = abi.encode(requestId, user, false); // false for isCompliant
 
+        /// @dev call performUpkeep
         vm.recordLogs();
         vm.prank(forwarder);
-        compliant.performUpkeep(performData);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
+        require(success, "delegate call to performUpkeep failed");
 
+        /// @dev check logs to make sure expected events are emitted
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 fulfilledEventSignature = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
         bytes32 emittedRequestId;
@@ -87,21 +109,33 @@ contract PerformUpkeepTest is BaseTest {
             }
         }
 
+        /// @dev assert correct event params
         assertEq(requestId, emittedRequestId);
         assertEq(user, emittedUser);
         assertFalse(emittedBool);
         assertFalse(compliantEventEmitted);
 
-        uint256 incrementedValueAfter = compliant.getAutomatedIncrement();
+        /// @dev assert compliant protected state change has not happened
+        (, bytes memory incrementedRetDataAfter) =
+            address(compliantProxy).call(abi.encodeWithSignature("getAutomatedIncrement()"));
+        uint256 incrementedValueAfter = abi.decode(incrementedRetDataAfter, (uint256));
         assertEq(incrementedValueAfter, 0);
 
-        Compliant.PendingRequest memory request = compliant.getPendingRequest(user);
+        /// @dev assert no compliantCalldata stored
+        (, bytes memory requestRetDataAfter) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+        Compliant.PendingRequest memory request = abi.decode(requestRetDataAfter, (Compliant.PendingRequest));
         assertFalse(request.isPending);
         assertEq(request.compliantCalldata.length, 0);
     }
 
     function test_compliant_performUpkeep_revertsWhen_not_forwarder() public {
         vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyForwarder()"));
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", ""));
+    }
+
+    function test_compliant_performUpkeep_revertsWhen_notProxy() public {
+        vm.expectRevert(abi.encodeWithSignature("Compliant__OnlyProxy()"));
         compliant.performUpkeep("");
     }
 }

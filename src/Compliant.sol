@@ -7,13 +7,14 @@ import {ILogAutomation, Log} from "@chainlink/contracts/src/v0.8/automation/inte
 import {AutomationBase} from "@chainlink/contracts/src/v0.8/automation/AutomationBase.sol";
 import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
+import {IAutomationForwarder} from "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationForwarder.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
-contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
+contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                            TYPE DECLARATIONS
     //////////////////////////////////////////////////////////////*/
@@ -22,6 +23,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
+    error Compliant__OnlyProxy();
     error Compliant__OnlyLinkToken();
     error Compliant__InsufficientLinkTransferAmount(uint256 insufficientAmount, uint256 requiredAmount);
     error Compliant__NonCompliantUser(address nonCompliantUser);
@@ -51,13 +53,13 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @dev LINK token contract
     LinkTokenInterface internal immutable i_link;
     /// @dev Chainlink PriceFeed for LINK/USD
-    AggregatorV3Interface internal immutable i_priceFeed;
-    /// @dev Chainlink Automation Consumer
-    IAutomationRegistryConsumer internal immutable i_automation;
+    AggregatorV3Interface internal immutable i_linkUsdFeed;
     /// @dev Chainlink Automation forwarder
-    address internal immutable i_forwarder;
+    IAutomationForwarder internal immutable i_forwarder;
     /// @dev Chainlink Automation upkeep/subscription ID
     uint256 internal immutable i_upkeepId;
+    /// @dev Compliant Proxy that all calls should go through
+    address internal immutable i_proxy;
 
     /// @dev tracks the accumulated fees for this contract in LINK
     uint256 internal s_compliantFeesInLink;
@@ -82,28 +84,37 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     event CompliantCheckPassed();
 
     /*//////////////////////////////////////////////////////////////
+                               MODIFIERS
+    //////////////////////////////////////////////////////////////*/
+    /// @dev prevent direct calls made to this contract
+    modifier onlyProxy() {
+        if (address(this) != i_proxy) revert Compliant__OnlyProxy();
+        _;
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
     /// @param everest Everest Chainlink consumer
     /// @param link LINK token
-    /// @param priceFeed LINK/USD Chainlink PriceFeed
-    /// @param automation Chainlink Automation consumer
+    /// @param linkUsdFeed LINK/USD Chainlink PriceFeed
     /// @param forwarder Chainlink Automation forwarder
     /// @param upkeepId Chainlink Automation upkeep/subscription ID
+    /// @param proxy Compliant Proxy address
     constructor(
         address everest,
         address link,
-        address priceFeed,
-        address automation,
+        address linkUsdFeed,
         address forwarder,
-        uint256 upkeepId
-    ) Ownable(msg.sender) {
+        uint256 upkeepId,
+        address proxy
+    ) {
         i_everest = IEverestConsumer(everest);
         i_link = LinkTokenInterface(link);
-        i_priceFeed = AggregatorV3Interface(priceFeed);
-        i_automation = IAutomationRegistryConsumer(automation);
-        i_forwarder = forwarder;
+        i_linkUsdFeed = AggregatorV3Interface(linkUsdFeed);
+        i_forwarder = IAutomationForwarder(forwarder);
         i_upkeepId = upkeepId;
+        i_proxy = proxy;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -114,7 +125,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @param data encoded data should contain the user address to request the kyc status of, a boolean
     /// indicating whether automation should be used to subsequently execute logic based on the immediate result,
     /// and arbitrary data to be passed to compliant restricted logic
-    function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external {
+    function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external onlyProxy {
         if (msg.sender != address(i_link)) revert Compliant__OnlyLinkToken();
 
         (address user, bool isAutomatedRequest, bytes memory compliantCalldata) =
@@ -133,6 +144,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @param compliantCalldata arbitrary data to pass to compliantly restricted logic based on fulfilled request
     function requestKycStatus(address user, bool isAutomated, bytes calldata compliantCalldata)
         external
+        onlyProxy
         returns (uint256)
     {
         uint256 fee = _handleFees(isAutomated, false);
@@ -141,7 +153,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     }
 
     /// @notice example function that can only be called by a compliant user
-    function doSomething() external {
+    function doSomething() external onlyProxy {
         _revertIfNonCompliant(msg.sender);
 
         // compliant-restricted logic goes here
@@ -150,12 +162,15 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     }
 
     /// @dev continuously simulated by Chainlink offchain Automation nodes
-    /// @notice upkeepNeeded evaluates to true if the Fulfilled log contains a pending requested address
     /// @param log ILogAutomation.Log
+    /// @return upkeepNeeded evaluates to true if the Fulfilled log contains a pending requested address
+    /// @return performData contains fulfilled pending requestId, requestedAddress and if they are compliant
+    /// @notice for some unit tests to run successfully `cannotExecute` modifier should be commented out
     function checkLog(Log calldata log, bytes memory)
         external
         view
         cannotExecute
+        onlyProxy
         returns (bool upkeepNeeded, bytes memory performData)
     {
         bytes32 eventSignature = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
@@ -183,8 +198,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     /// @notice called by Chainlink Automation forwarder if the user has completed KYC
     /// @dev this function should contain the logic restricted for compliant only users
     /// @param performData encoded bytes contains bytes32 requestId, address of requested user and bool isCompliant
-    function performUpkeep(bytes calldata performData) external {
-        if (msg.sender != i_forwarder) revert Compliant__OnlyForwarder();
+    function performUpkeep(bytes calldata performData) external onlyProxy {
+        if (msg.sender != address(i_forwarder)) revert Compliant__OnlyForwarder();
         (bytes32 requestId, address user, bool isCompliant) = abi.decode(performData, (bytes32, address, bool));
 
         s_pendingRequests[user].isPending = false;
@@ -207,11 +222,18 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
     }
 
     /// @dev admin function for withdrawing protocol fees
-    function withdrawFees() external onlyOwner {
+    function withdrawFees() external onlyProxy onlyOwner {
         uint256 compliantFeesInLink = s_compliantFeesInLink;
         s_compliantFeesInLink = 0;
 
         i_link.transfer(owner(), compliantFeesInLink);
+    }
+
+    /// @dev admin function for initializing owner when upgrading proxy to this implementation
+    /// @notice lack of access control may currently be considered a "known issue"
+    /// although if this is initialized in the same tx/script it is deployed, the issue would be null
+    function initialize(address initialOwner) external onlyProxy initializer {
+        __Ownable_init(initialOwner);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -252,12 +274,14 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
         uint256 totalFee = compliantFeeInLink + everestFeeInLink;
 
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_upkeepId);
+        IAutomationRegistryConsumer registry = i_forwarder.getRegistry();
+
+        uint96 automationFeeInLink = registry.getMinBalance(i_upkeepId);
 
         if (isAutomated) {
             totalFee += automationFeeInLink;
 
-            i_link.approve(address(i_automation), automationFeeInLink);
+            i_link.approve(address(registry), automationFeeInLink);
         }
 
         if (!isOnTokenTransfer) {
@@ -265,7 +289,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         }
 
         if (isAutomated) {
-            i_automation.addFunds(i_upkeepId, automationFeeInLink);
+            registry.addFunds(i_upkeepId, automationFeeInLink);
         }
 
         i_link.approve(address(i_everest), everestFeeInLink);
@@ -286,7 +310,7 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @dev returns the latest LINK/USD price
     function _getLatestPrice() internal view returns (uint256) {
-        (, int256 price,,,) = i_priceFeed.latestRoundData();
+        (, int256 price,,,) = i_linkUsdFeed.latestRoundData();
         return uint256(price);
     }
 
@@ -314,7 +338,8 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
 
     /// @notice returns the fee for a KYC request with subsequent automated logic
     function getFeeWithAutomation() external view returns (uint256) {
-        uint96 automationFeeInLink = i_automation.getMinBalance(i_upkeepId);
+        IAutomationRegistryConsumer registry = i_forwarder.getRegistry();
+        uint96 automationFeeInLink = registry.getMinBalance(i_upkeepId);
 
         return getFee() + automationFeeInLink;
     }
@@ -332,15 +357,11 @@ contract Compliant is ILogAutomation, AutomationBase, Ownable, IERC677Receiver {
         return i_link;
     }
 
-    function getPriceFeed() external view returns (AggregatorV3Interface) {
-        return i_priceFeed;
+    function getLinkUsdFeed() external view returns (AggregatorV3Interface) {
+        return i_linkUsdFeed;
     }
 
-    function getAutomation() external view returns (IAutomationRegistryConsumer) {
-        return i_automation;
-    }
-
-    function getForwarder() external view returns (address) {
+    function getForwarder() external view returns (IAutomationForwarder) {
         return i_forwarder;
     }
 

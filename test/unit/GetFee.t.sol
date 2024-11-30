@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.24;
 
 import {BaseTest} from "../BaseTest.t.sol";
-import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 
 contract GetFeeTest is BaseTest {
-    function test_compliant_getFee() public {
-        /// @dev set the price of LINK to $1
-        int256 oneDollar = 100_000_000;
-        MockV3Aggregator(priceFeed).updateAnswer(oneDollar);
+    uint256 internal constant WAD_PRECISION = 1e18;
+    uint256 internal constant COMPLIANT_FEE = 5e7; // $0.5
 
-        /// @dev so that we can accurately calculate our expected fee is 50c worth of LINK
+    function test_compliant_getFee() public view {
+        /// @dev get price of LINK in USD
+        (, int256 price,,,) = AggregatorV3Interface(linkUsdFeed).latestRoundData();
+
+        /// @dev get the totalFee
         uint256 totalFee = compliant.getFee();
-        uint256 compliantFee = totalFee - IEverestConsumer(everest).oraclePayment();
-        uint256 expectedFee = 5 * 1e17;
+        uint256 compliantFee = totalFee - IEverestConsumer(address(everest)).oraclePayment();
+
+        /// @dev calculate expected fee
+        uint256 expectedFee = (COMPLIANT_FEE * WAD_PRECISION) / uint256(price);
 
         assertEq(compliantFee, expectedFee);
     }
