@@ -6,7 +6,7 @@ import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
-contract MockAutomationConsumer is IAutomationRegistryConsumer {
+contract MockAutomationRegistry is IAutomationRegistryConsumer {
     LinkTokenInterface internal immutable i_link;
 
     uint96 balance;

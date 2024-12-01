@@ -6,7 +6,7 @@ import {Compliant} from "../../src/Compliant.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {MockLinkToken} from "./mocks/MockLinkToken.sol";
 import {MockEverestConsumer} from "./mocks/MockEverestConsumer.sol";
-import {MockAutomationConsumer} from "./mocks/MockAutomationConsumer.sol";
+import {MockAutomationRegistry} from "./mocks/MockAutomationRegistry.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 import {CompliantProxy} from "../src/proxy/CompliantProxy.sol";
 import {InitialImplementation} from "../src/proxy/InitialImplementation.sol";
@@ -50,7 +50,7 @@ contract BaseTest is Test {
         /// @dev fork mainnet and initialize contracts
         ethMainnetFork = vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), MAINNET_STARTING_BLOCK);
         HelperConfig config = new HelperConfig();
-        (, link, linkUsdFeed, registry, registrar) = config.activeNetworkConfig();
+        (, link, linkUsdFeed, registry, registrar,) = config.activeNetworkConfig();
         everest = new MockEverestConsumer(link);
 
         /// @dev deploy InitialImplementation
@@ -92,12 +92,12 @@ contract BaseTest is Test {
         ProxyAdmin(proxyAdmin).renounceOwnership();
         assertEq(ProxyAdmin(proxyAdmin).owner(), address(0));
 
-        /// @dev deal LINK to user
-        deal(link, user, USER_LINK_BALANCE);
-
         /// @dev assign owner
         (, bytes memory ownerData) = address(compliantProxy).call(abi.encodeWithSignature("owner()"));
         owner = abi.decode(ownerData, (address));
+
+        /// @dev deal LINK to user
+        deal(link, user, USER_LINK_BALANCE);
     }
 
     /// @notice Empty test function to ignore file in coverage report
