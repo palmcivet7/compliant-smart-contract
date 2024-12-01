@@ -5,6 +5,7 @@ import {Test, console2} from "forge-std/Test.sol";
 import {Compliant} from "../../src/Compliant.sol";
 import {MockEverestConsumer} from "../mocks/MockEverestConsumer.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
 contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
@@ -30,6 +31,13 @@ contract Handler is Test {
     EnumerableSet.AddressSet internal revealers;
     /// @dev track the created requestedAddresses
     EnumerableSet.AddressSet internal requestedAddresses;
+
+    /// @dev ghost to track direct calls to Compliant implementation
+    uint256 public g_directImplementationCalls;
+    /// @dev ghost to track direct calls to Compliant implementation that succeeded
+    uint256 public g_directCallSuccesses;
+    /// @dev ghost to track directs to Compliant implementation that have failed
+    uint256 public g_directCallReverts;
 
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
@@ -184,10 +192,107 @@ contract Handler is Test {
         }
     }
 
+    /// @dev onlyProxy
+    // @review readability/modularity can be improved here
+    function externalImplementationCalls(
+        uint256 divisor,
+        uint256 addressSeed,
+        bool isAutomation,
+        bytes memory compliantCalldata
+    ) public {
+        /// @dev increment ghost
+        g_directImplementationCalls++;
+
+        /// @dev get revealer and requestedAddress
+        addressSeed = bound(addressSeed, 1, type(uint256).max - 1);
+        address revealer = _seedToAddress(addressSeed++);
+        address requestedAddress = _seedToAddress(addressSeed);
+
+        /// @dev make direct call to one of external functions
+        uint256 choice = divisor % 4;
+        if (choice == 0) {
+            directOnTokenTransfer(revealer, requestedAddress, isAutomation, compliantCalldata);
+        } else if (choice == 1) {
+            directRequestKycStatus(revealer, requestedAddress, isAutomation, compliantCalldata);
+        } else if (choice == 2) {
+            directDoSomething();
+        } else if (choice == 3) {
+            directWithdrawFees();
+        } else {
+            revert("Invalid choice");
+        }
+    }
+
+    function directOnTokenTransfer(
+        address revealer,
+        address requestedAddress,
+        bool isAutomation,
+        bytes memory compliantCalldata
+    ) public {
+        uint256 amount;
+        if (isAutomation) amount = compliant.getFeeWithAutomation();
+        else amount = compliant.getFee();
+        deal(link, revealer, amount);
+
+        bytes memory data = abi.encode(requestedAddress, isAutomation, compliantCalldata);
+
+        vm.prank(revealer);
+        try LinkTokenInterface(link).transferAndCall(address(compliant), amount, data) {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function directRequestKycStatus(
+        address revealer,
+        address requestedAddress,
+        bool isAutomation,
+        bytes memory compliantCalldata
+    ) public {
+        uint256 amount;
+        if (isAutomation) amount = compliant.getFeeWithAutomation();
+        else amount = compliant.getFee();
+        deal(link, revealer, amount);
+
+        vm.prank(revealer);
+        try compliant.requestKycStatus(requestedAddress, isAutomation, compliantCalldata) {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function directDoSomething() public {
+        try compliant.doSomething() {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function directWithdrawFees() public {
+        try compliant.withdrawFees() {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
     function _performUpkeep() internal {}
+
+    function _handleOnlyProxyError(bytes memory error) internal {
+        g_directCallReverts++;
+
+        bytes4 selector;
+        assembly {
+            selector := mload(add(error, 32))
+        }
+        assertEq(selector, bytes4(keccak256("Compliant__OnlyProxy()")));
+    }
 
     /*//////////////////////////////////////////////////////////////
                                 UTILITY
