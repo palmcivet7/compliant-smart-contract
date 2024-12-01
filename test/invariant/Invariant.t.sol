@@ -17,6 +17,7 @@ import {
     ITransparentUpgradeableProxy,
     MockAutomationRegistry
 } from "../BaseTest.t.sol";
+import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 
 contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -87,19 +88,23 @@ contract Invariant is StdInvariant, BaseTest {
         //-----------------------------------------------------------------------------------------------
 
         /// @dev deploy handler
-        handler = new Handler(compliant, address(compliantProxy), deployer, link, forwarder);
+        handler = new Handler(
+            compliant, address(compliantProxy), deployer, link, forwarder, address(everest), address(proxyAdmin)
+        );
 
         /// @dev define appropriate function selectors
-        bytes4[] memory selectors = new bytes4[](1);
-        // selectors[0] = Handler.onTokenTransfer.selector;
-        // selectors[1] = Handler.requestKycStatus.selector;
-        // selectors[2] = Handler.doSomething.selector;
-        // selectors[3] = Handler.withdrawFees.selector;
-        selectors[0] = Handler.externalImplementationCalls.selector;
+        bytes4[] memory selectors = new bytes4[](5);
+        selectors[0] = Handler.onTokenTransfer.selector;
+        selectors[1] = Handler.requestKycStatus.selector;
+        selectors[2] = Handler.doSomething.selector;
+        selectors[3] = Handler.withdrawFees.selector;
+        selectors[4] = Handler.externalImplementationCalls.selector;
 
         /// @dev target handler and appropriate function selectors
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
+
+        excludeSender(address(proxyAdmin));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -129,13 +134,48 @@ contract Invariant is StdInvariant, BaseTest {
     // 2. Pending Request Management:
     //  For any user address, at most one pending request can exist at a time (s_pendingRequests[user].isPending).
     //  If a pending request is fulfilled, isPending must be set to false.
+    function invariant_pendingRequest() public {
+        (, bytes memory retData) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", msg.sender));
+        Compliant.PendingRequest memory request = abi.decode(retData, (Compliant.PendingRequest));
+
+        assertEq(
+            request.isPending,
+            handler.g_pendingRequests(msg.sender),
+            "Invariant violated: Pending request should only be true whilst waiting for Chainlink Automation to be fulfilled."
+        );
+    }
 
     // 3. Fees Accounting:
     //  The total s_compliantFeesInLink should always equal the cumulative LINK collected from fees minus any
     //  LINK withdrawn using withdrawFees.
+    function invariant_feesAccounting() public {
+        (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
+        uint256 fees = abi.decode(retData, (uint256));
+
+        assertEq(
+            fees,
+            handler.g_totalFeesEarned() - handler.g_totalFeesWithdrawn(),
+            "Invariant violated: Compliant Protocol fees available to withdraw should be total earned minus total withdrawn."
+        );
+    }
 
     // 4. KYC Status Consistency:
     //  A user marked as compliant (_isCompliant(user)) must have their latest fulfilled KYC request indicating isKYCUser = true.
+    function invariant_compliantStatusIntegrity() public {
+        (, bytes memory retData) =
+            address(compliantProxy).call(abi.encodeWithSignature("getIsCompliant(address)", msg.sender));
+        bool isCompliant = abi.decode(retData, (bool));
+
+        IEverestConsumer.Request memory request =
+            IEverestConsumer(address(everest)).getLatestFulfilledRequest(msg.sender);
+
+        assertEq(
+            isCompliant,
+            request.isKYCUser,
+            "Invariant violated: Compliant status returned by contract should be the same as latest fulfilled Everest request."
+        );
+    }
 
     // 5. Fee Calculation:
     //  The fee for KYC requests should always match the sum of: _calculateCompliantFee(), i_everest.oraclePayment(),

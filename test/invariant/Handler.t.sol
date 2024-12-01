@@ -6,6 +6,7 @@ import {Compliant} from "../../src/Compliant.sol";
 import {MockEverestConsumer} from "../mocks/MockEverestConsumer.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
+import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 
 contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
@@ -26,6 +27,10 @@ contract Handler is Test {
     address public link;
     /// @dev Chainlink Automation forwarder
     address public forwarder;
+    /// @dev Everest Chainlink Consumer
+    address public everest;
+    /// @dev ProxyAdmin contract
+    address public proxyAdmin;
 
     /// @dev track the created revealer addresses
     EnumerableSet.AddressSet internal revealers;
@@ -36,8 +41,13 @@ contract Handler is Test {
     uint256 public g_directImplementationCalls;
     /// @dev ghost to track direct calls to Compliant implementation that succeeded
     uint256 public g_directCallSuccesses;
-    /// @dev ghost to track directs to Compliant implementation that have failed
+    /// @dev ghost to track direct calls to Compliant implementation that have failed
     uint256 public g_directCallReverts;
+
+    /// @dev ghost to track total Compliant protocol fees that have been paid by users
+    uint256 public g_totalFeesEarned;
+    /// @dev ghost to track total fees that have been withdrawn
+    uint256 public g_totalFeesWithdrawn;
 
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
@@ -51,12 +61,22 @@ contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
-    constructor(Compliant _compliant, address _compliantProxy, address _deployer, address _link, address _forwarder) {
+    constructor(
+        Compliant _compliant,
+        address _compliantProxy,
+        address _deployer,
+        address _link,
+        address _forwarder,
+        address _everest,
+        address _proxyAdmin
+    ) {
         compliant = _compliant;
         compliantProxy = _compliantProxy;
         deployer = _deployer;
         link = _link;
         forwarder = _forwarder;
+        everest = _everest;
+        proxyAdmin = _proxyAdmin;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -88,6 +108,8 @@ contract Handler is Test {
         if (isAutomation) {
             g_pendingRequests[requestedAddress] = true;
         }
+
+        g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
 
         /// @dev create calldata for transferAndCall request
         bytes memory data = abi.encode(requestedAddress, isAutomation, compliantCalldata);
@@ -130,6 +152,8 @@ contract Handler is Test {
         if (isAutomation && compliantCalldata.length > 0) {
             g_requestedAddressToCalldata[requestedAddress] = compliantCalldata;
         }
+
+        g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
 
         /// @dev requestKycStatus
         (bool success,) = address(compliantProxy).call(
@@ -186,8 +210,15 @@ contract Handler is Test {
                 revealerSeed, isNewRevealer, revealeeSeed, isNewRevealee, isCompliant, isAutomation, compliantCalldata
             );
         } else {
+            /// @dev getCompliantFeesToWithdraw and add it to ghost tracker
+            (, bytes memory retData) =
+                address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
+            uint256 fees = abi.decode(retData, (uint256));
+            g_totalFeesWithdrawn += fees;
+
             vm.prank(compliant.owner());
-            compliant.withdrawFees();
+            (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
+            require(success, "delegate call in handler to withdrawFees() failed");
             g_compliantFeesInLink = 0;
         }
     }
@@ -303,14 +334,18 @@ contract Handler is Test {
     }
 
     /// @dev create a revealer address for calling requestKycStatus or onTokenTransfer
-    function _createOrGetRevealer(uint256 addressSeed, bool createRevealer) internal returns (address) {
+    function _createOrGetRevealer(uint256 addressSeed, bool createRevealer) internal returns (address revealer) {
         if (revealers.length() == 0 || createRevealer) {
-            address revealer = _seedToAddress(addressSeed);
+            revealer = _seedToAddress(addressSeed);
             revealers.add(revealer);
 
+            vm.assume(revealer != proxyAdmin);
             return revealer;
         } else if (!createRevealer) {
-            return _indexToRevealerAddress(addressSeed);
+            revealer = _indexToRevealerAddress(addressSeed);
+
+            vm.assume(revealer != proxyAdmin);
+            return revealer;
         }
     }
 
