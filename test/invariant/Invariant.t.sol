@@ -120,14 +120,18 @@ contract Invariant is StdInvariant, BaseTest {
     //  All external functions should be callable only through the proxy (onlyProxy modifier ensures this).
     //  Direct calls to the implementation contract should fail.
     function invariant_onlyProxy_noDirectCallsSucceed() public view {
-        assertEq(handler.g_directCallSuccesses(), 0, "Invariant violated: Direct calls should never succeed");
+        assertEq(
+            handler.g_directCallSuccesses(),
+            0,
+            "Invariant violated: Direct calls to implementation contract should never succeed"
+        );
     }
 
     function invariant_onlyProxy_directCallsRevert() public view {
         assertEq(
             handler.g_directImplementationCalls(),
             handler.g_directCallReverts(),
-            "Invariant violated: All direct calls should revert"
+            "Invariant violated: All direct calls to implementation contract should revert"
         );
     }
 
