@@ -268,7 +268,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     /// @param isOnTokenTransfer if the tx was initiated by erc677 onTokenTransfer, we don't need to transferFrom(msg.sender)
     function _handleFees(bool isAutomated, bool isOnTokenTransfer) internal returns (uint256) {
         uint256 compliantFeeInLink = _calculateCompliantFee();
-        uint256 everestFeeInLink = i_everest.oraclePayment();
+        uint256 everestFeeInLink = _getEverestFee();
 
         s_compliantFeesInLink += compliantFeeInLink;
 
@@ -319,6 +319,11 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         return (COMPLIANT_FEE * WAD_PRECISION) / _getLatestPrice();
     }
 
+    /// @dev returns fee in LINK for an Everest request
+    function _getEverestFee() internal view returns (uint256) {
+        return i_everest.oraclePayment();
+    }
+
     /*//////////////////////////////////////////////////////////////
                                  GETTER
     //////////////////////////////////////////////////////////////*/
@@ -331,9 +336,14 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     /// @notice returns the fee for a standard KYC request
     function getFee() public view returns (uint256) {
         uint256 compliantFeeInLink = _calculateCompliantFee();
-        uint256 everestFeeInLink = i_everest.oraclePayment();
+        uint256 everestFeeInLink = _getEverestFee();
 
         return compliantFeeInLink + everestFeeInLink;
+    }
+
+    /// @notice returns the amount that gets taken by the protocol without the everest request fee
+    function getCompliantFee() external view returns (uint256) {
+        return _calculateCompliantFee();
     }
 
     /// @notice returns the fee for a KYC request with subsequent automated logic
