@@ -18,13 +18,14 @@ import {
     MockAutomationRegistry
 } from "../BaseTest.t.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
+import {IAutomationRegistryConsumer} from
+    "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
 
 contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
-    /// @dev value returned by registry.getMinBalance()
-    // @review consider updating this randomly to sensibly bound values
+    /// @dev initial value returned by registry.getMinBalance()
     uint96 internal constant AUTOMATION_MIN_BALANCE = 1e17;
 
     /// @dev contract handling calls to Compliant
@@ -89,16 +90,24 @@ contract Invariant is StdInvariant, BaseTest {
 
         /// @dev deploy handler
         handler = new Handler(
-            compliant, address(compliantProxy), deployer, link, forwarder, address(everest), address(proxyAdmin)
+            compliant,
+            address(compliantProxy),
+            deployer,
+            link,
+            forwarder,
+            address(everest),
+            address(proxyAdmin),
+            registry
         );
 
         /// @dev define appropriate function selectors
-        bytes4[] memory selectors = new bytes4[](5);
+        bytes4[] memory selectors = new bytes4[](6);
         selectors[0] = Handler.onTokenTransfer.selector;
         selectors[1] = Handler.requestKycStatus.selector;
         selectors[2] = Handler.doSomething.selector;
         selectors[3] = Handler.withdrawFees.selector;
         selectors[4] = Handler.externalImplementationCalls.selector;
+        selectors[5] = Handler.changeFeeVariables.selector;
 
         /// @dev target handler and appropriate function selectors
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
@@ -188,7 +197,34 @@ contract Invariant is StdInvariant, BaseTest {
     // 5. Fee Calculation:
     //  The fee for KYC requests should always match the sum of: _calculateCompliantFee(), i_everest.oraclePayment(),
     //  Automation fees (if applicable).
-    // function invariant_feeCalculation() public {}
+    function invariant_feeCalculation_noAutomation() public {
+        (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getFee()"));
+        uint256 fee = abi.decode(retData, (uint256));
+
+        uint256 oraclePayment = IEverestConsumer(address(everest)).oraclePayment();
+        uint256 expectedFee = oraclePayment + compliant.getCompliantFee();
+
+        assertEq(
+            fee,
+            expectedFee,
+            "Invariant violated: Fee for a standard request should always be equal to Compliant and Everest fee."
+        );
+    }
+
+    function invariant_feeCalculation_withAutomation() public {
+        (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getFeeWithAutomation()"));
+        uint256 fee = abi.decode(retData, (uint256));
+
+        uint256 oraclePayment = IEverestConsumer(address(everest)).oraclePayment();
+        uint256 minBalance = IAutomationRegistryConsumer(registry).getMinBalance(upkeepId);
+        uint256 expectedFee = oraclePayment + minBalance + compliant.getCompliantFee();
+
+        assertEq(
+            fee,
+            expectedFee,
+            "Invariant violated: Fee for a request with Automation should always equal the Compliant, Everest, and upkeep minBalance."
+        );
+    }
 
     // 6. Compliance Logic:
     //  Only compliant users can call doSomething successfully.

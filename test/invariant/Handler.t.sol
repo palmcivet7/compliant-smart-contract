@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {Compliant} from "../../src/Compliant.sol";
 import {MockEverestConsumer} from "../mocks/MockEverestConsumer.sol";
+import {MockAutomationRegistry} from "../mocks/MockAutomationRegistry.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
@@ -31,6 +32,8 @@ contract Handler is Test {
     address public everest;
     /// @dev ProxyAdmin contract
     address public proxyAdmin;
+    /// @dev Chainlink Automation Registry
+    address public registry;
 
     /// @dev track the users in the system (requestedAddresses)
     EnumerableSet.AddressSet internal users;
@@ -66,8 +69,11 @@ contract Handler is Test {
         address _link,
         address _forwarder,
         address _everest,
-        address _proxyAdmin
-    ) {
+        address _proxyAdmin,
+        address _registry
+    ) 
+    // address _registry
+    {
         compliant = _compliant;
         compliantProxy = _compliantProxy;
         deployer = _deployer;
@@ -75,6 +81,7 @@ contract Handler is Test {
         forwarder = _forwarder;
         everest = _everest;
         proxyAdmin = _proxyAdmin;
+        registry = _registry;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -287,6 +294,15 @@ contract Handler is Test {
         }
     }
 
+    function changeFeeVariables(uint256 oraclePayment, uint256 minBalance) public {
+        uint256 minValue = 1e15;
+        uint256 maxValue = 1e19;
+        oraclePayment = bound(oraclePayment, minValue, maxValue);
+        minBalance = bound(minBalance, minValue, maxValue);
+        MockEverestConsumer(everest).setOraclePayment(oraclePayment);
+        MockAutomationRegistry(registry).setMinBalance(uint96(minBalance));
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
@@ -305,6 +321,8 @@ contract Handler is Test {
     //////////////////////////////////////////////////////////////*/
     /// @dev helper function for looping through users in the system
     function forEachUser(function(address) external func) external {
+        if (users.length() == 0) return;
+
         for (uint256 i; i < users.length(); ++i) {
             func(users.at(i));
         }
