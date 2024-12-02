@@ -110,9 +110,6 @@ contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
                                INVARIANTS
     //////////////////////////////////////////////////////////////*/
-    function invariant_checkSomething() public {
-        assertTrue(true);
-    }
 
     // what are our invariants?
 
@@ -123,7 +120,7 @@ contract Invariant is StdInvariant, BaseTest {
         assertEq(
             handler.g_directCallSuccesses(),
             0,
-            "Invariant violated: Direct calls to implementation contract should never succeed"
+            "Invariant violated: Direct calls to implementation contract should never succeed."
         );
     }
 
@@ -131,7 +128,7 @@ contract Invariant is StdInvariant, BaseTest {
         assertEq(
             handler.g_directImplementationCalls(),
             handler.g_directCallReverts(),
-            "Invariant violated: All direct calls to implementation contract should revert"
+            "Invariant violated: All direct calls to implementation contract should revert."
         );
     }
 
@@ -139,13 +136,17 @@ contract Invariant is StdInvariant, BaseTest {
     //  For any user address, at most one pending request can exist at a time (s_pendingRequests[user].isPending).
     //  If a pending request is fulfilled, isPending must be set to false.
     function invariant_pendingRequest() public {
+        handler.forEachUser(this.checkPendingRequestForUser);
+    }
+
+    function checkPendingRequestForUser(address user) external {
         (, bytes memory retData) =
-            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", msg.sender));
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
         Compliant.PendingRequest memory request = abi.decode(retData, (Compliant.PendingRequest));
 
         assertEq(
             request.isPending,
-            handler.g_pendingRequests(msg.sender),
+            handler.g_pendingRequests(user),
             "Invariant violated: Pending request should only be true whilst waiting for Chainlink Automation to be fulfilled."
         );
     }
@@ -167,12 +168,15 @@ contract Invariant is StdInvariant, BaseTest {
     // 4. KYC Status Consistency:
     //  A user marked as compliant (_isCompliant(user)) must have their latest fulfilled KYC request indicating isKYCUser = true.
     function invariant_compliantStatusIntegrity() public {
+        handler.forEachUser(this.checkCompliantStatusForUser);
+    }
+
+    function checkCompliantStatusForUser(address user) external {
         (, bytes memory retData) =
-            address(compliantProxy).call(abi.encodeWithSignature("getIsCompliant(address)", msg.sender));
+            address(compliantProxy).call(abi.encodeWithSignature("getIsCompliant(address)", user));
         bool isCompliant = abi.decode(retData, (bool));
 
-        IEverestConsumer.Request memory request =
-            IEverestConsumer(address(everest)).getLatestFulfilledRequest(msg.sender);
+        IEverestConsumer.Request memory request = IEverestConsumer(address(everest)).getLatestFulfilledRequest(user);
 
         assertEq(
             isCompliant,
@@ -184,6 +188,7 @@ contract Invariant is StdInvariant, BaseTest {
     // 5. Fee Calculation:
     //  The fee for KYC requests should always match the sum of: _calculateCompliantFee(), i_everest.oraclePayment(),
     //  Automation fees (if applicable).
+    // function invariant_feeCalculation() public {}
 
     // 6. Compliance Logic:
     //  Only compliant users can call doSomething successfully.

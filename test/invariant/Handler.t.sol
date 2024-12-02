@@ -32,10 +32,8 @@ contract Handler is Test {
     /// @dev ProxyAdmin contract
     address public proxyAdmin;
 
-    /// @dev track the created revealer addresses
-    EnumerableSet.AddressSet internal revealers;
-    /// @dev track the created requestedAddresses
-    EnumerableSet.AddressSet internal requestedAddresses;
+    /// @dev track the users in the system (requestedAddresses)
+    EnumerableSet.AddressSet internal users;
 
     /// @dev ghost to track direct calls to Compliant implementation
     uint256 public g_directImplementationCalls;
@@ -83,105 +81,103 @@ contract Handler is Test {
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @dev only LINK transferAndCall
-    function onTokenTransfer(
-        uint256 revealerSeed,
-        bool isNewRevealer,
-        uint256 requestedAddressSeed,
-        bool isNewRequestedAddress,
-        bool isCompliant,
-        bool isAutomation,
-        bytes calldata compliantCalldata
-    ) public {
-        /// @dev create or get revealer and requestedAddress, then set/fuzz requestedAddress Everest status
-        (address revealer, address requestedAddress) =
-            _setUpRequest(revealerSeed, isNewRevealer, requestedAddressSeed, isNewRequestedAddress, isCompliant);
+    function onTokenTransfer(uint256 addressSeed, bool isCompliant, bool isAutomation, bytes calldata compliantCalldata)
+        public
+    {
+        /// @dev create a user
+        address user = _seedToAddress(addressSeed);
+        require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
+        /// @dev set the Everest status for the request (we pass user twice because they are revealing themselves)
+        _setEverestStatus(user, isCompliant);
 
-        /// @dev deal link to revealer
-        uint256 amount = _dealLink(revealer, isAutomation);
+        /// @dev deal link to user
+        uint256 amount = _dealLink(user, isAutomation);
 
         /// @dev store compliantCalldata in ghost mapping
         if (isAutomation && compliantCalldata.length > 0) {
-            g_requestedAddressToCalldata[requestedAddress] = compliantCalldata;
+            g_requestedAddressToCalldata[user] = compliantCalldata;
         }
 
         /// @dev set request to pending
         if (isAutomation) {
-            g_pendingRequests[requestedAddress] = true;
+            g_pendingRequests[user] = true;
         }
 
+        /// @dev update totalFeesEarned ghost
         g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
 
         /// @dev create calldata for transferAndCall request
-        bytes memory data = abi.encode(requestedAddress, isAutomation, compliantCalldata);
+        bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
 
         /// @dev request KYC status with transferAndCall
-        vm.startPrank(revealer);
+        vm.startPrank(user);
         compliant.getLink().transferAndCall(address(compliantProxy), amount, data);
+
+        users.add(user);
         vm.stopPrank();
 
         /// @notice the Fulfilled event that gets emitted here SHOULD trigger Chainlink Automation
         /// This is not happening, even though we simulated registering and enabling all log triggers on our mainnet fork,
         /// because Chainlink's offchain automation nodes are separate from our environment.
 
-        if (g_pendingRequests[requestedAddress]) {
-            performUpkeep(requestedAddress, isCompliant);
+        if (g_pendingRequests[user]) {
+            performUpkeep(user, isCompliant);
         }
     }
 
     function requestKycStatus(
-        uint256 revealerSeed,
-        bool isNewRevealer,
-        uint256 requestedAddressSeed,
-        bool isNewRequestedAddress,
+        uint256 addressSeed,
         bool isCompliant,
         bool isAutomation,
         bytes calldata compliantCalldata
     ) public {
-        /// @dev create or get revealer and requestedAddress, then set/fuzz requestedAddress Everest status
-        (address revealer, address requestedAddress) =
-            _setUpRequest(revealerSeed, isNewRevealer, requestedAddressSeed, isNewRequestedAddress, isCompliant);
+        /// @dev create a user
+        address user = _seedToAddress(addressSeed);
+        require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
+        /// @dev set the Everest status for the request (we pass user twice because they are revealing themselves)
+        _setEverestStatus(user, isCompliant);
 
-        /// @dev deal link to revealer
-        uint256 amount = _dealLink(revealer, isAutomation);
+        /// @dev deal link to user
+        uint256 amount = _dealLink(user, isAutomation);
 
         /// @dev approve compliantProxy to spend link
-        vm.startPrank(revealer);
+        vm.startPrank(user);
         compliant.getLink().approve(address(compliantProxy), amount);
 
         /// @dev store compliantCalldata in ghost mapping
         if (isAutomation && compliantCalldata.length > 0) {
-            g_requestedAddressToCalldata[requestedAddress] = compliantCalldata;
+            g_requestedAddressToCalldata[user] = compliantCalldata;
         }
 
         g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
 
         /// @dev requestKycStatus
         (bool success,) = address(compliantProxy).call(
-            abi.encodeWithSignature(
-                "requestKycStatus(address,bool,bytes)", requestedAddress, isAutomation, compliantCalldata
-            )
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, isAutomation, compliantCalldata)
         );
         require(success, "delegate call in handler to requestKycStatus() failed");
 
+        users.add(user);
         vm.stopPrank();
 
         if (isAutomation) {
-            performUpkeep(requestedAddress, isCompliant);
+            performUpkeep(user, isCompliant);
         }
     }
 
     /// @dev onlyCompliant
-    function doSomething(uint256 requestedAddressSeed, bool isNewRevealer) public {
-        address user = _createOrGetRequestedAddress(requestedAddressSeed, isNewRevealer);
+    function doSomething(uint256 addressSeed) public {
+        address user = _createOrGetUser(addressSeed);
+        require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
+
         if (g_requestedAddressToStatus[user]) {
             vm.prank(user);
             (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("doSomething()"));
             require(success, "delegate call in handler to doSomething() failed");
+
+            // update some ghost
         }
     }
-
-    /// @dev cannotExecute
-    function checkLog() public {}
 
     /// @dev onlyForwarder
     function performUpkeep(address requestedAddress, bool isCompliant) public {
@@ -196,19 +192,11 @@ contract Handler is Test {
     }
 
     /// @dev onlyOwner
-    function withdrawFees(
-        uint256 revealerSeed,
-        bool isNewRevealer,
-        uint256 revealeeSeed,
-        bool isNewRevealee,
-        bool isCompliant,
-        bool isAutomation,
-        bytes calldata compliantCalldata
-    ) public {
+    function withdrawFees(uint256 addressSeed, bool isCompliant, bool isAutomation, bytes calldata compliantCalldata)
+        public
+    {
         if (g_compliantFeesInLink == 0) {
-            requestKycStatus(
-                revealerSeed, isNewRevealer, revealeeSeed, isNewRevealee, isCompliant, isAutomation, compliantCalldata
-            );
+            requestKycStatus(addressSeed, isCompliant, isAutomation, compliantCalldata);
         } else {
             /// @dev getCompliantFeesToWithdraw and add it to ghost tracker
             (, bytes memory retData) =
@@ -236,15 +224,14 @@ contract Handler is Test {
 
         /// @dev get revealer and requestedAddress
         addressSeed = bound(addressSeed, 1, type(uint256).max - 1);
-        address revealer = _seedToAddress(addressSeed++);
-        address requestedAddress = _seedToAddress(addressSeed);
+        address user = _seedToAddress(addressSeed);
 
         /// @dev make direct call to one of external functions
         uint256 choice = divisor % 4;
         if (choice == 0) {
-            directOnTokenTransfer(revealer, requestedAddress, isAutomation, compliantCalldata);
+            directOnTokenTransfer(user, isAutomation, compliantCalldata);
         } else if (choice == 1) {
-            directRequestKycStatus(revealer, requestedAddress, isAutomation, compliantCalldata);
+            directRequestKycStatus(user, isAutomation, compliantCalldata);
         } else if (choice == 2) {
             directDoSomething();
         } else if (choice == 3) {
@@ -254,20 +241,15 @@ contract Handler is Test {
         }
     }
 
-    function directOnTokenTransfer(
-        address revealer,
-        address requestedAddress,
-        bool isAutomation,
-        bytes memory compliantCalldata
-    ) public {
+    function directOnTokenTransfer(address user, bool isAutomation, bytes memory compliantCalldata) public {
         uint256 amount;
         if (isAutomation) amount = compliant.getFeeWithAutomation();
         else amount = compliant.getFee();
-        deal(link, revealer, amount);
+        deal(link, user, amount);
 
-        bytes memory data = abi.encode(requestedAddress, isAutomation, compliantCalldata);
+        bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
 
-        vm.prank(revealer);
+        vm.prank(user);
         try LinkTokenInterface(link).transferAndCall(address(compliant), amount, data) {
             g_directCallSuccesses++;
         } catch (bytes memory error) {
@@ -275,19 +257,14 @@ contract Handler is Test {
         }
     }
 
-    function directRequestKycStatus(
-        address revealer,
-        address requestedAddress,
-        bool isAutomation,
-        bytes memory compliantCalldata
-    ) public {
+    function directRequestKycStatus(address user, bool isAutomation, bytes memory compliantCalldata) public {
         uint256 amount;
         if (isAutomation) amount = compliant.getFeeWithAutomation();
         else amount = compliant.getFee();
-        deal(link, revealer, amount);
+        deal(link, user, amount);
 
-        vm.prank(revealer);
-        try compliant.requestKycStatus(requestedAddress, isAutomation, compliantCalldata) {
+        vm.prank(user);
+        try compliant.requestKycStatus(user, isAutomation, compliantCalldata) {
             g_directCallSuccesses++;
         } catch (bytes memory error) {
             _handleOnlyProxyError(error);
@@ -313,8 +290,6 @@ contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
-    function _performUpkeep() internal {}
-
     function _handleOnlyProxyError(bytes memory error) internal {
         g_directCallReverts++;
 
@@ -328,59 +303,58 @@ contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
                                 UTILITY
     //////////////////////////////////////////////////////////////*/
+    /// @dev helper function for looping through users in the system
+    function forEachUser(function(address) external func) external {
+        for (uint256 i; i < users.length(); ++i) {
+            func(users.at(i));
+        }
+    }
+
     /// @dev convert a seed to an address
-    function _seedToAddress(uint256 addressSeed) internal pure returns (address) {
-        return address(uint160(bound(addressSeed, 1, type(uint160).max)));
+    function _seedToAddress(uint256 addressSeed) internal view returns (address seedAddress) {
+        uint160 boundInt = uint160(bound(addressSeed, 1, type(uint160).max));
+        seedAddress = address(boundInt);
+        if (seedAddress == compliantProxy) {
+            addressSeed++;
+            boundInt = uint160(bound(addressSeed, 1, type(uint160).max));
+            seedAddress = address(boundInt);
+            if (seedAddress == proxyAdmin) {
+                addressSeed++;
+                boundInt = uint160(bound(addressSeed, 1, type(uint160).max));
+                seedAddress = address(boundInt);
+            }
+        }
+        vm.assume(seedAddress != proxyAdmin);
+        vm.assume(seedAddress != compliantProxy);
+        return seedAddress;
     }
 
-    /// @dev create a revealer address for calling requestKycStatus or onTokenTransfer
-    function _createOrGetRevealer(uint256 addressSeed, bool createRevealer) internal returns (address revealer) {
-        if (revealers.length() == 0 || createRevealer) {
-            revealer = _seedToAddress(addressSeed);
-            revealers.add(revealer);
+    /// @dev create a user address for calling and passing to requestKycStatus or onTokenTransfer
+    function _createOrGetUser(uint256 addressSeed) internal returns (address user) {
+        if (users.length() == 0) {
+            user = _seedToAddress(addressSeed);
+            users.add(user);
 
-            vm.assume(revealer != proxyAdmin);
-            return revealer;
-        } else if (!createRevealer) {
-            revealer = _indexToRevealerAddress(addressSeed);
+            return user;
+        } else {
+            user = _indexToUser(addressSeed);
 
-            vm.assume(revealer != proxyAdmin);
-            return revealer;
+            return user;
         }
     }
 
-    /// @dev convert an index to an existing revealer address
-    function _indexToRevealerAddress(uint256 addressIndex) internal view returns (address) {
-        return revealers.at(bound(addressIndex, 0, revealers.length() - 1));
-    }
-
-    /// @dev create a revealee address for calling requestKycStatus or onTokenTransfer
-    function _createOrGetRequestedAddress(uint256 addressSeed, bool createRequestedAddress)
-        internal
-        returns (address)
-    {
-        if (requestedAddresses.length() == 0 || createRequestedAddress) {
-            address revealee = _seedToAddress(addressSeed);
-            requestedAddresses.add(revealee);
-
-            return revealee;
-        } else if (!createRequestedAddress) {
-            return _indexToRequestedAddresses(addressSeed);
-        }
-    }
-
-    /// @dev convert an index to an existing revealee address
-    function _indexToRequestedAddresses(uint256 addressIndex) internal view returns (address) {
-        return requestedAddresses.at(bound(addressIndex, 0, requestedAddresses.length() - 1));
+    /// @dev convert an index to an existing user
+    function _indexToUser(uint256 addressIndex) internal view returns (address) {
+        return users.at(bound(addressIndex, 0, users.length() - 1));
     }
 
     /// @dev set/fuzz the everest status of a requestedAddress
-    function _setEverestStatus(address revealer, address requestedAddress, bool isCompliant) internal {
+    function _setEverestStatus(address user, bool isCompliant) internal {
         MockEverestConsumer(address(compliant.getEverest())).setLatestFulfilledRequest(
-            false, isCompliant, isCompliant, revealer, requestedAddress, uint40(block.timestamp)
+            false, isCompliant, isCompliant, address(compliantProxy), user, uint40(block.timestamp)
         );
 
-        g_requestedAddressToStatus[requestedAddress] = isCompliant;
+        g_requestedAddressToStatus[user] = isCompliant;
     }
 
     /// @dev deal link to revealer to pay for funds and return amount
@@ -392,29 +366,5 @@ contract Handler is Test {
         deal(link, receiver, amount);
 
         return amount;
-    }
-
-    /// @dev set up a new request and get the revealer and requestedAddress
-    function _setUpRequest(
-        uint256 revealerSeed,
-        bool isNewRevealer,
-        uint256 requestedAddressSeed,
-        bool isNewRequestedAddress,
-        bool isCompliant
-    ) internal returns (address, address) {
-        /// @dev create or get a revealer
-        address revealer = _createOrGetRevealer(revealerSeed, isNewRevealer);
-        /// @dev create or get a requestedAddress
-        address requestedAddress = _createOrGetRequestedAddress(requestedAddressSeed, isNewRequestedAddress);
-
-        // /// @dev if requestedAddress is pending, get a new one
-        // if (g_pendingRequests[requestedAddress]) {
-        //     requestedAddress = _createOrGetRequestedAddress(requestedAddressSeed++, true);
-        // }
-
-        /// @dev set/fuzz the everest status of the requestedAddress
-        _setEverestStatus(revealer, requestedAddress, isCompliant);
-
-        return (revealer, requestedAddress);
     }
 }
