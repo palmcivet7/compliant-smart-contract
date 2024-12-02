@@ -51,4 +51,4 @@ This project uses a `TransparentUpgradeableProxy` (`CompliantProxy`) to store Ch
 - register `CompliantProxy` with Chainlink Automation
 - deploy `Compliant` with immutable `forwarder` and `upkeepId`
 - upgrade `CompliantProxy` to point at `Compliant`
-- renounceOwnership of `CompliantProxy` Admin, ensuring the implementation cannot be changed again
+- renounceOwnership of CompliantProxy's `ProxyAdmin` Admin, ensuring the implementation cannot be changed again
