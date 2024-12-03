@@ -227,8 +227,63 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // 6. Compliance Logic:
-    //  Only compliant users can call doSomething successfully.
-    //  The _executeCompliantLogic function must only execute if the user is marked as compliant.
+    /// @notice only compliant users can call compliant restricted logic
+    function invariant_compliantLogic_manualExecution() public {
+        handler.forEachUser(this.checkDoSomethingLogic);
+    }
+
+    function checkDoSomethingLogic(address user) external {
+        /// @dev fetch user's compliant status and manually call compliant restricted logic
+        IEverestConsumer.Request memory request = IEverestConsumer(address(everest)).getLatestFulfilledRequest(user);
+        vm.prank(user);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("doSomething()"));
+
+        /// @dev assert conditional invariant
+        if (success) {
+            assertTrue(
+                request.isKYCUser,
+                "Invariant violated: Only users who completed Everest KYC should be able to manually execute compliant logic."
+            );
+        } else {
+            assertFalse(
+                request.isKYCUser,
+                "Invariant violated: Users who have not completed Everest KYC should not be able to execute compliant logic."
+            );
+        }
+    }
+
+    /// @dev assert manually executed compliant restricted logic changes state correctly
+    function invariant_compliantLogic_stateChange_manualExecution() public {
+        (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getIncrementedValue()"));
+        uint256 incrementedValue = abi.decode(retData, (uint256));
+
+        assertEq(
+            incrementedValue,
+            handler.g_manualIncrement(),
+            "Invariant violated: Manually executed Compliant restricted logic state change should be consistent."
+        );
+    }
+
+    /// @dev assert automated compliant restricted logic changes state correctly
+    function invariant_compliantLogic_stateChange_withAutomation() public {
+        (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getAutomatedIncrement()"));
+        uint256 incrementedValue = abi.decode(retData, (uint256));
+
+        assertEq(
+            incrementedValue,
+            handler.g_automationIncrement(),
+            "Invariant violated: Automated Compliant restricted logic state change should be consistent."
+        );
+    }
+
+    /// @dev check that CompliantCheckPassed() event is emitted everytime a fulfilled request isCompliant
+    function invariant_compliantLogic_withAutomation_events() public view {
+        assertEq(
+            handler.g_fulfilledRequestIsCompliant(),
+            handler.g_automatedCompliantCheckPassed(),
+            "Invariant violated: If fulfilled request is compliant, automated Compliant restricted logic should be accessed."
+        );
+    }
 
     // 7. Upkeep Execution: NOTE: THIS WOULD REQUIRE LOCAL CHAINLINK AUTOMATION SIMULATOR
     //  performUpkeep should only process requests where checkLog indicates that upkeepNeeded is true.
@@ -236,6 +291,26 @@ contract Invariant is StdInvariant, BaseTest {
 
     // 8. Forwarder Protection:
     //  Only the registered forwarder (i_forwarder) can call performUpkeep.
+    function invariant_onlyForwarder_canCall_performUpkeep() public {
+        handler.forEachUser(this.checkForwarderCanCallPerformUpkeep);
+    }
+
+    function checkForwarderCanCallPerformUpkeep(address user) external {
+        bytes32 requestId = bytes32(uint256(uint160(user)));
+        bytes memory performData = abi.encode(requestId, user, true);
+
+        // Case 1: Forwarder should succeed
+        vm.prank(forwarder);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
+        assertTrue(success, "Invariant violated: Forwarder should be able to call performUpkeep");
+
+        // Case 2: Non-forwarder should fail
+        address randomAddress = address(uint160(uint256(keccak256(abi.encode(user, block.timestamp))) >> 96));
+        vm.assume(randomAddress != forwarder);
+        vm.prank(randomAddress);
+        (success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
+        assertFalse(success, "Invariant violated: Non-forwarder should not be able to call performUpkeep");
+    }
 
     // 9. Event Consistency:
     //  Every KYC status request emits a KYCStatusRequested event with the correct everestRequestId and user.

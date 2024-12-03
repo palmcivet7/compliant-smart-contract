@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test, console2, Vm} from "forge-std/Test.sol";
 import {Compliant} from "../../src/Compliant.sol";
 import {MockEverestConsumer} from "../mocks/MockEverestConsumer.sol";
 import {MockAutomationRegistry} from "../mocks/MockAutomationRegistry.sol";
@@ -49,6 +49,16 @@ contract Handler is Test {
     uint256 public g_totalFeesEarned;
     /// @dev ghost to track total fees that have been withdrawn
     uint256 public g_totalFeesWithdrawn;
+
+    /// @dev ghost to track number of times compliant restricted logic manually executed
+    uint256 public g_manualIncrement;
+    /// @dev ghost to track number of times compliant restricted logic executed with automation
+    uint256 public g_automationIncrement;
+
+    /// @dev ghost to increment every time KYCStatusRequestFulfilled contains compliant
+    uint256 public g_fulfilledRequestIsCompliant;
+    /// @dev ghost to increment every time CompliantCheckPassed() event is emitted for automated requests
+    uint256 public g_automatedCompliantCheckPassed;
 
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
@@ -128,7 +138,7 @@ contract Handler is Test {
         /// because Chainlink's offchain automation nodes are separate from our environment.
 
         if (g_pendingRequests[user]) {
-            performUpkeep(user, isCompliant);
+            _performUpkeep(user, isCompliant);
         }
     }
 
@@ -141,7 +151,7 @@ contract Handler is Test {
         /// @dev create a user
         address user = _seedToAddress(addressSeed);
         require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
-        /// @dev set the Everest status for the request (we pass user twice because they are revealing themselves)
+        /// @dev set the Everest status for the request
         _setEverestStatus(user, isCompliant);
 
         /// @dev deal link to user
@@ -168,7 +178,7 @@ contract Handler is Test {
         vm.stopPrank();
 
         if (isAutomation) {
-            performUpkeep(user, isCompliant);
+            _performUpkeep(user, isCompliant);
         }
     }
 
@@ -183,19 +193,8 @@ contract Handler is Test {
             require(success, "delegate call in handler to doSomething() failed");
 
             // update some ghost
+            g_manualIncrement++;
         }
-    }
-
-    /// @dev onlyForwarder
-    function performUpkeep(address requestedAddress, bool isCompliant) public {
-        bytes32 requestId = bytes32(uint256(uint160(requestedAddress)));
-        bytes memory performData = abi.encode(requestId, requestedAddress, isCompliant);
-
-        vm.prank(forwarder);
-        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
-        require(success, "delegate call in handler to performUpkeep() failed");
-
-        g_pendingRequests[requestedAddress] = false;
     }
 
     /// @dev onlyOwner
@@ -234,7 +233,7 @@ contract Handler is Test {
         address user = _seedToAddress(addressSeed);
 
         /// @dev make direct call to one of external functions
-        uint256 choice = divisor % 4;
+        uint256 choice = divisor % 5;
         if (choice == 0) {
             directOnTokenTransfer(user, isAutomation, compliantCalldata);
         } else if (choice == 1) {
@@ -243,6 +242,8 @@ contract Handler is Test {
             directDoSomething();
         } else if (choice == 3) {
             directWithdrawFees();
+        } else if (choice == 4) {
+            directInitialize(user);
         } else {
             revert("Invalid choice");
         }
@@ -294,6 +295,14 @@ contract Handler is Test {
         }
     }
 
+    function directInitialize(address initialOwner) public {
+        try compliant.initialize(initialOwner) {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
     function changeFeeVariables(uint256 oraclePayment, uint256 minBalance) public {
         uint256 minValue = 1e15;
         uint256 maxValue = 1e19;
@@ -306,6 +315,36 @@ contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
+    /// @dev onlyForwarder
+    function _performUpkeep(address requestedAddress, bool isCompliant) internal {
+        bytes32 requestId = bytes32(uint256(uint160(requestedAddress)));
+        bytes memory performData = abi.encode(requestId, requestedAddress, isCompliant);
+
+        vm.recordLogs();
+        vm.prank(forwarder);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
+        require(success, "delegate call in handler to performUpkeep() failed");
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 fulfilledEventSignature = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
+        bytes32 compliantEventSignature = keccak256("CompliantCheckPassed()");
+
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == fulfilledEventSignature) {
+                /// @dev if isCompliant is true, increment ghost value
+                if ((logs[i].topics[3] != bytes32(0))) g_fulfilledRequestIsCompliant++;
+            }
+
+            if (logs[i].topics[0] == compliantEventSignature) {
+                g_automatedCompliantCheckPassed++;
+            }
+        }
+
+        g_pendingRequests[requestedAddress] = false;
+
+        if (isCompliant) g_automationIncrement++;
+    }
+
     function _handleOnlyProxyError(bytes memory error) internal {
         g_directCallReverts++;
 
