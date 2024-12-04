@@ -87,6 +87,9 @@ contract Handler is Test {
     /// @dev ghost to track if fulfilled event from compliant marks user as compliant
     mapping(address user => bool isCompliant) public g_compliantFulfilledEventIsCompliant;
 
+    /// @dev ghost to track requestId emitted by Compliant KYCStatusRequestFulfilled event
+    mapping(address user => bytes32 requestId) public g_compliantFulfilledEventRequestId;
+
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
     /// @dev ghost to track requestedAddresses to compliant status
@@ -108,9 +111,7 @@ contract Handler is Test {
         address _everest,
         address _proxyAdmin,
         address _registry
-    ) 
-    // address _registry
-    {
+    ) {
         compliant = _compliant;
         compliantProxy = _compliantProxy;
         deployer = _deployer;
@@ -345,18 +346,18 @@ contract Handler is Test {
         bool isOnTokenTransfer
     ) public {
         if (g_compliantFeesInLink == 0) {
-            // requestKycStatus(addressSeed, isCompliant, isAutomation, compliantCalldata);
             sendRequest(addressSeed, isCompliant, isAutomation, compliantCalldata, isOnTokenTransfer);
         } else {
             /// @dev getCompliantFeesToWithdraw and add it to ghost tracker
             (, bytes memory retData) =
                 address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
             uint256 fees = abi.decode(retData, (uint256));
-            g_totalFeesWithdrawn += fees;
 
             vm.prank(compliant.owner());
             (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
             require(success, "delegate call in handler to withdrawFees() failed");
+
+            g_totalFeesWithdrawn += fees;
             g_compliantFeesInLink = 0;
         }
     }
@@ -576,7 +577,8 @@ contract Handler is Test {
 
             /// @dev handle KYCStatusRequestFulfilled() event params and ghost
             if (logs[i].topics[0] == kycStatusRequestFulfilled) {
-                console2.log("(logs[i].topics[3] != bytes32(0)):", (logs[i].topics[3] != bytes32(0)));
+                bytes32 emittedRequestId = logs[i].topics[1];
+                g_compliantFulfilledEventRequestId[user] = emittedRequestId;
 
                 /// @dev if isCompliant is true, increment ghost value
                 if ((logs[i].topics[3] != bytes32(0))) {

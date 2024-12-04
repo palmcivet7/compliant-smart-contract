@@ -319,7 +319,7 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     /// @dev every KYC status request emits a KYCStatusRequested event with the correct everestRequestId and user.
-    function invariant_eventConsistency_kycStatusRequested_correctParams() public {
+    function invariant_eventConsistency_kycStatusRequested_requestId() public {
         handler.forEachUser(this.checkKYCStatusRequestedEvent);
     }
 
@@ -350,7 +350,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    /// @dev KYCStatusRequestFulfilled event should emit the correct requestId, user, and isCompliant status
+    /// @dev KYCStatusRequestFulfilled event should emit the correct isCompliant status
     function invariant_eventConsistency_kycStatusRequestFulfilled_isCompliant() public {
         handler.forEachUser(this.checkFulfilledRequestEventsCompliantStatus);
     }
@@ -364,22 +364,20 @@ contract Invariant is StdInvariant, BaseTest {
         }
     }
 
-    // function invariant_eventConsistency() public {
-    //     // bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
-    //     // if (handler.g_fulfilledUsers(user)) {
-    //     //     assertEq(
-    //     //         expectedRequestId,
-    //     //         handler.g_fulfilledEventParams(user),
-    //     //         "Invariant violated: KYCStatusRequested event params should emit correct requestId and user."
-    //     //     );
-    //     // } else {
-    //     //     assertEq(
-    //     //         handler.g_fulfilledEventParams(user),
-    //     //         0,
-    //     //         "Invariant violated: A user who hasn't been requested should not have been emitted."
-    //     //     );
-    //     // }
-    // }
+    /// @dev KYCStatusRequestFulfilled event should emit the correct requestId
+    function invariant_eventConsistency_kycStatusRequestFulfilled_requestId() public {
+        handler.forEachUser(this.checkFulfilledRequestEventsRequestId);
+    }
+
+    function checkFulfilledRequestEventsRequestId(address user) external view {
+        if (handler.g_fulfilledUsers(user)) {
+            assertEq(
+                handler.g_everestFulfilledEventRequestId(user),
+                handler.g_compliantFulfilledEventRequestId(user),
+                "Invariant violated: Request ID should be the same in automated Compliant Fulfilled event as Everest Fulfilled."
+            );
+        }
+    }
 
     // 10. Fee Transfer Validity:
     //  For any request, the amount of LINK transferred or approved must cover the total fees calculated in _handleFees.
