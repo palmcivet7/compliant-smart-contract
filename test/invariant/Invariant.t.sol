@@ -20,6 +20,7 @@ import {
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
+import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 
 contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -103,8 +104,6 @@ contract Invariant is StdInvariant, BaseTest {
         /// @dev define appropriate function selectors
         bytes4[] memory selectors = new bytes4[](5);
         selectors[0] = Handler.sendRequest.selector;
-        // selectors[0] = Handler.onTokenTransfer.selector;
-        // selectors[1] = Handler.requestKycStatus.selector;
         selectors[1] = Handler.doSomething.selector;
         selectors[2] = Handler.withdrawFees.selector;
         selectors[3] = Handler.externalImplementationCalls.selector;
@@ -381,7 +380,23 @@ contract Invariant is StdInvariant, BaseTest {
 
     // 10. Fee Transfer Validity:
     //  For any request, the amount of LINK transferred or approved must cover the total fees calculated in _handleFees.
-    //  The LINK balance of the contract should decrease by the exact amount transferred to the owner in withdrawFees.
+    // function invariant_feeIntegrity() public {
+    //     // have a ghost that increments everytime a tx is attempted with -1 less than the required fee amount
+    //     // g_insufficientFeeRequest (should == below)
+    //     // g_insufficientFeeRevert (should == above)
+    //     // g_insufficientFeeSuccess (should == 0)
+    // }
+
+    /// @dev LINK balance of the contract should decrease by the exact amount transferred to the owner in withdrawFees
+    function invariant_linkBalanceIntegrity() public view {
+        uint256 balance = LinkTokenInterface(link).balanceOf(address(compliantProxy));
+
+        assertEq(
+            balance,
+            handler.g_totalFeesEarned() - handler.g_totalFeesWithdrawn(),
+            "Invariant violated: LINK balance should decrease by the exact amount transferred to the owner in withdrawFees."
+        );
+    }
 
     // 11. Approvals:
     //  LINK approvals to i_everest and the registry must match the required fees for the respective operations.
