@@ -101,13 +101,14 @@ contract Invariant is StdInvariant, BaseTest {
         );
 
         /// @dev define appropriate function selectors
-        bytes4[] memory selectors = new bytes4[](6);
-        selectors[0] = Handler.onTokenTransfer.selector;
-        selectors[1] = Handler.requestKycStatus.selector;
-        selectors[2] = Handler.doSomething.selector;
-        selectors[3] = Handler.withdrawFees.selector;
-        selectors[4] = Handler.externalImplementationCalls.selector;
-        selectors[5] = Handler.changeFeeVariables.selector;
+        bytes4[] memory selectors = new bytes4[](5);
+        selectors[0] = Handler.sendRequest.selector;
+        // selectors[0] = Handler.onTokenTransfer.selector;
+        // selectors[1] = Handler.requestKycStatus.selector;
+        selectors[1] = Handler.doSomething.selector;
+        selectors[2] = Handler.withdrawFees.selector;
+        selectors[3] = Handler.externalImplementationCalls.selector;
+        selectors[4] = Handler.changeFeeVariables.selector;
 
         /// @dev target handler and appropriate function selectors
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
@@ -119,12 +120,8 @@ contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
                                INVARIANTS
     //////////////////////////////////////////////////////////////*/
-
-    // what are our invariants?
-
     // 1. Proxy Protection:
-    //  All external functions should be callable only through the proxy (onlyProxy modifier ensures this).
-    //  Direct calls to the implementation contract should fail.
+    /// @dev no direct calls (that change state) to the proxy should succeed
     function invariant_onlyProxy_noDirectCallsSucceed() public view {
         assertEq(
             handler.g_directCallSuccesses(),
@@ -133,6 +130,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
+    /// @dev all direct calls (that change state) to the proxy should revert
     function invariant_onlyProxy_directCallsRevert() public view {
         assertEq(
             handler.g_directImplementationCalls(),
@@ -161,8 +159,7 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // 3. Fees Accounting:
-    //  The total s_compliantFeesInLink should always equal the cumulative LINK collected from fees minus any
-    //  LINK withdrawn using withdrawFees.
+    /// @dev fees available for owner to withdraw should always equal cumulative LINK earned minus any already withdrawn
     function invariant_feesAccounting() public {
         (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
         uint256 fees = abi.decode(retData, (uint256));
@@ -175,7 +172,7 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // 4. KYC Status Consistency:
-    //  A user marked as compliant (_isCompliant(user)) must have their latest fulfilled KYC request indicating isKYCUser = true.
+    /// @dev A user marked as compliant (_isCompliant(user)) must have their latest fulfilled KYC request isKYCUser = true.
     function invariant_compliantStatusIntegrity() public {
         handler.forEachUser(this.checkCompliantStatusForUser);
     }
@@ -195,8 +192,7 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // 5. Fee Calculation:
-    //  The fee for KYC requests should always match the sum of: _calculateCompliantFee(), i_everest.oraclePayment(),
-    //  Automation fees (if applicable).
+    /// @dev the fee for KYC requests should always be the sum of _calculateCompliantFee() + i_everest.oraclePayment().
     function invariant_feeCalculation_noAutomation() public {
         (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getFee()"));
         uint256 fee = abi.decode(retData, (uint256));
@@ -211,6 +207,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
+    /// @dev the fee for automated requests should always be the sum of compliantFee, everestFee and upkeep minBalance.
     function invariant_feeCalculation_withAutomation() public {
         (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getFeeWithAutomation()"));
         uint256 fee = abi.decode(retData, (uint256));
@@ -227,7 +224,7 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // 6. Compliance Logic:
-    /// @notice only compliant users can call compliant restricted logic
+    /// @dev only compliant users can call compliant restricted logic
     function invariant_compliantLogic_manualExecution() public {
         handler.forEachUser(this.checkDoSomethingLogic);
     }
@@ -290,7 +287,7 @@ contract Invariant is StdInvariant, BaseTest {
     //  Automation-related requests (isAutomated = true) should add funds to the Chainlink registry via registry.addFunds.
 
     // 8. Forwarder Protection:
-    //  Only the registered forwarder (i_forwarder) can call performUpkeep.
+    /// @dev only the forwarder can call performUpkeep
     function invariant_onlyForwarder_canCall_performUpkeep() public {
         handler.forEachUser(this.checkForwarderCanCallPerformUpkeep);
     }
@@ -305,16 +302,84 @@ contract Invariant is StdInvariant, BaseTest {
         assertTrue(success, "Invariant violated: Forwarder should be able to call performUpkeep");
 
         // Case 2: Non-forwarder should fail
-        address randomAddress = address(uint160(uint256(keccak256(abi.encode(user, block.timestamp))) >> 96));
-        vm.assume(randomAddress != forwarder);
-        vm.prank(randomAddress);
+        vm.assume(user != forwarder);
+        vm.prank(user);
         (success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
         assertFalse(success, "Invariant violated: Non-forwarder should not be able to call performUpkeep");
     }
 
     // 9. Event Consistency:
-    //  Every KYC status request emits a KYCStatusRequested event with the correct everestRequestId and user.
-    //  Fulfilled requests emit KYCStatusRequestFulfilled with the correct requestId, user, and isCompliant status.
+    /// @dev assert KYCStatusRequested event is emitted for every request
+    function invariant_eventConsistency_kycStatusRequested() public view {
+        assertEq(
+            handler.g_requestedEventsEmitted(),
+            handler.g_requestsMade(),
+            "Invariant violated: A KYCStatusRequested event should be emitted for every request."
+        );
+    }
+
+    /// @dev every KYC status request emits a KYCStatusRequested event with the correct everestRequestId and user.
+    function invariant_eventConsistency_kycStatusRequested_correctParams() public {
+        handler.forEachUser(this.checkKYCStatusRequestedEvent);
+    }
+
+    function checkKYCStatusRequestedEvent(address user) external view {
+        bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
+
+        if (handler.g_requestedUsers(user)) {
+            assertEq(
+                expectedRequestId,
+                handler.g_requestedEventRequestId(user),
+                "Invariant violated: KYCStatusRequested event params should emit correct requestId and user."
+            );
+        } else {
+            assertEq(
+                handler.g_requestedEventRequestId(user),
+                0,
+                "Invariant violated: A user who hasn't been requested should not have been emitted."
+            );
+        }
+    }
+
+    /// @dev assert KYCStatusRequestFulfilled event emitted for fulfilled *AUTOMATED* requests
+    function invariant_eventConsistency_kycStatusRequestFulfilled() public view {
+        assertEq(
+            handler.g_compliantFulfilledEventsEmitted(),
+            handler.g_requestsFulfilled(),
+            "Invariant violated: A KYCStatusFulfilled event should be emitted for every request fulfilled."
+        );
+    }
+
+    /// @dev KYCStatusRequestFulfilled event should emit the correct requestId, user, and isCompliant status
+    function invariant_eventConsistency_kycStatusRequestFulfilled_isCompliant() public {
+        handler.forEachUser(this.checkFulfilledRequestEventsCompliantStatus);
+    }
+
+    function checkFulfilledRequestEventsCompliantStatus(address user) external view {
+        if (handler.g_compliantFulfilledEventIsCompliant(user) && handler.g_requestedAddressToStatus(user)) {
+            assertTrue(
+                handler.g_everestFulfilledEventIsCompliant(user),
+                "Invariant violated: Compliant status should be the same in automated Compliant Fulfilled event as Everest Fulfilled."
+            );
+        }
+    }
+
+    // function invariant_eventConsistency() public {
+    //     // bytes32 expectedRequestId = bytes32(uint256(uint160(user)));
+    //     // if (handler.g_fulfilledUsers(user)) {
+    //     //     assertEq(
+    //     //         expectedRequestId,
+    //     //         handler.g_fulfilledEventParams(user),
+    //     //         "Invariant violated: KYCStatusRequested event params should emit correct requestId and user."
+    //     //     );
+    //     // } else {
+    //     //     assertEq(
+    //     //         handler.g_fulfilledEventParams(user),
+    //     //         0,
+    //     //         "Invariant violated: A user who hasn't been requested should not have been emitted."
+    //     //     );
+    //     // }
+    // }
 
     // 10. Fee Transfer Validity:
     //  For any request, the amount of LINK transferred or approved must cover the total fees calculated in _handleFees.

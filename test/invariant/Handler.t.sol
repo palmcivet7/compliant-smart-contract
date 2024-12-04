@@ -60,6 +60,33 @@ contract Handler is Test {
     /// @dev ghost to increment every time CompliantCheckPassed() event is emitted for automated requests
     uint256 public g_automatedCompliantCheckPassed;
 
+    /// @dev ghost to track params emitted by KYCStatusRequested(address,bytes32) event
+    mapping(address user => bytes32 requestId) public g_requestedEventRequestId;
+    /// @dev ghost to track if a user's compliance status has been requested
+    mapping(address user => bool requested) public g_requestedUsers;
+
+    /// @dev ghost to track amount of requests made
+    uint256 public g_requestsMade;
+    /// @dev ghost to track amount of KYCStatusRequested(bytes32,address) events emitted
+    uint256 public g_requestedEventsEmitted;
+    /// @dev ghost to track amount of requests fulfilled
+    uint256 public g_requestsFulfilled; // compliant request event
+    /// @dev ghost to increment amount of KYCStatusRequestFulfilled(bytes32,address,bool) events emitted
+    uint256 public g_compliantFulfilledEventsEmitted;
+
+    /// @dev ghost to increment every time Everest.Fulfilled() event is emitted
+    uint256 public g_everestFulfilledEventsEmitted;
+
+    /// @dev ghost to track if request for user's status has been fulfilled
+    mapping(address user => bool fulfilled) public g_fulfilledUsers;
+    /// @dev ghost to track if fulfilled event from everest marks user as compliant
+    mapping(address user => bool isCompliant) public g_everestFulfilledEventIsCompliant;
+    /// @dev ghost mapping of user to requestId emitted by Everest.Fulfilled
+    mapping(address user => bytes32 everestRequestId) public g_everestFulfilledEventRequestId;
+
+    /// @dev ghost to track if fulfilled event from compliant marks user as compliant
+    mapping(address user => bool isCompliant) public g_compliantFulfilledEventIsCompliant;
+
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
     /// @dev ghost to track requestedAddresses to compliant status
@@ -97,89 +124,201 @@ contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
-    /// @dev only LINK transferAndCall
-    function onTokenTransfer(uint256 addressSeed, bool isCompliant, bool isAutomation, bytes calldata compliantCalldata)
-        public
-    {
-        /// @dev create a user
-        address user = _seedToAddress(addressSeed);
-        require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
-        /// @dev set the Everest status for the request (we pass user twice because they are revealing themselves)
-        _setEverestStatus(user, isCompliant);
+    // /// @dev only LINK transferAndCall
+    // function onTokenTransfer(uint256 addressSeed, bool isCompliant, bool isAutomation, bytes calldata compliantCalldata)
+    //     public
+    // {
+    //     /// @dev create a user
+    //     address user = _seedToAddress(addressSeed);
+    //     require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
+    //     /// @dev set the Everest status for the request (we pass user twice because they are revealing themselves)
+    //     _setEverestStatus(user, isCompliant);
 
-        /// @dev deal link to user
-        uint256 amount = _dealLink(user, isAutomation);
+    //     /// @dev deal link to user
+    //     uint256 amount = _dealLink(user, isAutomation);
 
-        /// @dev store compliantCalldata in ghost mapping
-        if (isAutomation && compliantCalldata.length > 0) {
-            g_requestedAddressToCalldata[user] = compliantCalldata;
-        }
+    //     /// @dev store compliantCalldata in ghost mapping
+    //     if (isAutomation && compliantCalldata.length > 0) {
+    //         g_requestedAddressToCalldata[user] = compliantCalldata;
+    //     }
 
-        /// @dev set request to pending
-        if (isAutomation) {
-            g_pendingRequests[user] = true;
-        }
+    //     /// @dev set request to pending
+    //     if (isAutomation) {
+    //         g_pendingRequests[user] = true;
+    //     }
 
-        /// @dev update totalFeesEarned ghost
-        g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
+    //     /// @dev update totalFeesEarned ghost
+    //     g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
 
-        /// @dev create calldata for transferAndCall request
-        bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
+    //     /// @dev create calldata for transferAndCall request
+    //     bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
 
-        /// @dev request KYC status with transferAndCall
-        vm.startPrank(user);
-        compliant.getLink().transferAndCall(address(compliantProxy), amount, data);
+    //     vm.recordLogs();
 
-        users.add(user);
-        vm.stopPrank();
+    //     /// @dev request KYC status with transferAndCall
+    //     vm.startPrank(user);
+    //     bool success = compliant.getLink().transferAndCall(address(compliantProxy), amount, data);
+    //     require(success, "transferAndCall in handler failed");
 
-        /// @notice the Fulfilled event that gets emitted here SHOULD trigger Chainlink Automation
-        /// This is not happening, even though we simulated registering and enabling all log triggers on our mainnet fork,
-        /// because Chainlink's offchain automation nodes are separate from our environment.
+    //     Vm.Log[] memory logs = vm.getRecordedLogs();
+    //     bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
+    //     bytes32 emittedRequestId;
+    //     address emittedUser;
+    //     /// @dev and Everest.fulfilled() event
+    //     bytes32 everestEventSignature = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
+    //     for (uint256 i = 0; i < logs.length; i++) {
+    //         if (logs[i].topics[0] == eventSignature) {
+    //             (emittedRequestId,,) = abi.decode(logs[i].data, (bytes32, IEverestConsumer.Status, uint40));
+    //             emittedUser = address(uint160(uint256(logs[i].topics[2])));
+    //             g_requestedEventParams[emittedUser] = emittedRequestId;
+    //             g_requestedUsers[emittedUser] = true;
+    //             g_requestedEventsEmitted++;
+    //         }
 
-        if (g_pendingRequests[user]) {
-            _performUpkeep(user, isCompliant);
-        }
-    }
+    //         // if (logs[i].topics[0] == everestEventSignature) {
+    //         //     address revealee = address(uint160(uint256(logs[i].topics[2])));
+    //         //     (, IEverestConsumer.Status status,) =
+    //         //         abi.decode(logs[i].data, (bytes32, IEverestConsumer.Status, uint40));
+    //         //     g_everestFulfilledEventIsCompliant[revealee] = (status == IEverestConsumer.Status.KYCUser);
+    //         // }
+    //     }
 
-    function requestKycStatus(
+    //     users.add(user);
+    //     vm.stopPrank();
+
+    //     g_requestsMade++;
+
+    //     /// @notice the Fulfilled event that gets emitted here SHOULD trigger Chainlink Automation
+    //     /// This is not happening, even though we simulated registering and enabling all log triggers on our mainnet fork,
+    //     /// because Chainlink's offchain automation nodes are separate from our environment.
+
+    //     if (g_pendingRequests[user]) {
+    //         _performUpkeep(user, isCompliant);
+    //     }
+    // }
+
+    // function requestKycStatus(
+    //     uint256 addressSeed,
+    //     bool isCompliant,
+    //     bool isAutomation,
+    //     bytes calldata compliantCalldata
+    // ) public {
+    //     /// @dev create a user
+    //     address user = _seedToAddress(addressSeed);
+    //     require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
+    //     /// @dev set the Everest status for the request
+    //     _setEverestStatus(user, isCompliant);
+
+    //     /// @dev deal link to user
+    //     uint256 amount = _dealLink(user, isAutomation);
+
+    //     /// @dev approve compliantProxy to spend link
+    //     vm.startPrank(user);
+    //     compliant.getLink().approve(address(compliantProxy), amount);
+
+    //     /// @dev store compliantCalldata in ghost mapping
+    //     if (isAutomation && compliantCalldata.length > 0) {
+    //         g_requestedAddressToCalldata[user] = compliantCalldata;
+    //     }
+
+    //     /// @dev store fees in ghost
+    //     g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
+
+    //     /// @dev everytime a status is requested, we must vm record the logs so that we can assert that the logs
+    //     /// contain the correct requestId and user KYCStatusRequested(everestRequestId, user)
+    //     /// this needs to be done for requestKycStatus and onTokenTransfer
+    //     /// ghost mapping of user to requestId
+    //     // mapping(address user => bytes32 requestId) public g_requestedEventParams;
+
+    //     vm.recordLogs();
+
+    //     /// @dev requestKycStatus
+    //     (bool success,) = address(compliantProxy).call(
+    //         abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, isAutomation, compliantCalldata)
+    //     );
+    //     require(success, "delegate call in handler to requestKycStatus() failed");
+
+    //     /// @dev check KYCStatusRequested() event
+    //     Vm.Log[] memory logs = vm.getRecordedLogs();
+    //     bytes32 eventSignature = keccak256("KYCStatusRequested(bytes32,address)");
+    //     bytes32 emittedRequestId;
+    //     address emittedUser;
+    //     /// @dev and Everest.fulfilled() event
+    //     bytes32 everestEventSignature = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
+
+    //     for (uint256 i = 0; i < logs.length; i++) {
+    //         if (logs[i].topics[0] == eventSignature) {
+    //             (emittedRequestId,,) = abi.decode(logs[i].data, (bytes32, IEverestConsumer.Status, uint40));
+    //             emittedUser = address(uint160(uint256(logs[i].topics[2])));
+    //             g_requestedEventParams[emittedUser] = emittedRequestId;
+    //             g_requestedUsers[emittedUser] = true;
+    //             g_requestedEventsEmitted++;
+    //         }
+
+    //         // if (logs[i].topics[0] == everestEventSignature) {
+    //         //     address revealee = address(uint160(uint256(logs[i].topics[2])));
+    //         //     (, IEverestConsumer.Status status,) =
+    //         //         abi.decode(logs[i].data, (bytes32, IEverestConsumer.Status, uint40));
+    //         //     g_everestFulfilledEventIsCompliant[revealee] = (status == IEverestConsumer.Status.KYCUser);
+    //         // }
+    //     }
+
+    //     users.add(user);
+    //     vm.stopPrank();
+
+    //     g_requestsMade++;
+
+    //     if (isAutomation) {
+    //         _performUpkeep(user, isCompliant);
+    //     }
+    // }
+
+    /// @dev simulate onTokenTransfer or requestKycStatus
+    function sendRequest(
         uint256 addressSeed,
         bool isCompliant,
         bool isAutomation,
-        bytes calldata compliantCalldata
+        bytes calldata compliantCalldata,
+        bool isOnTokenTransfer
     ) public {
-        /// @dev create a user
-        address user = _seedToAddress(addressSeed);
-        require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
-        /// @dev set the Everest status for the request
-        _setEverestStatus(user, isCompliant);
+        /// @dev start request by getting a user and dealing them appropriate amount of link
+        (address user, uint256 amount) = _startRequest(addressSeed, isCompliant, isAutomation);
+        users.add(user);
 
-        /// @dev deal link to user
-        uint256 amount = _dealLink(user, isAutomation);
+        /// @dev record logs of the request (and simulated Everest fulfillment)
+        vm.recordLogs();
 
-        /// @dev approve compliantProxy to spend link
-        vm.startPrank(user);
-        compliant.getLink().approve(address(compliantProxy), amount);
-
-        /// @dev store compliantCalldata in ghost mapping
-        if (isAutomation && compliantCalldata.length > 0) {
-            g_requestedAddressToCalldata[user] = compliantCalldata;
+        /// @dev send request with isOnTokenTransfer or requestKycStatus
+        if (isOnTokenTransfer) {
+            /// @dev create calldata for transferAndCall request
+            bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
+            /// @dev send request with onTokenTransfer
+            vm.startPrank(user);
+            bool success = compliant.getLink().transferAndCall(address(compliantProxy), amount, data);
+            require(success, "transferAndCall in handler failed");
+            vm.stopPrank();
+        } else {
+            /// @dev approve compliantProxy to spend link
+            vm.startPrank(user);
+            compliant.getLink().approve(address(compliantProxy), amount);
+            /// @dev requestKycStatus
+            (bool success,) = address(compliantProxy).call(
+                abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, isAutomation, compliantCalldata)
+            );
+            require(success, "delegate call in handler to requestKycStatus() failed");
+            vm.stopPrank();
         }
 
-        g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
+        /// @dev update relevant ghosts for request
+        _updateRequestGhosts(user, isAutomation, compliantCalldata);
 
-        /// @dev requestKycStatus
-        (bool success,) = address(compliantProxy).call(
-            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, isAutomation, compliantCalldata)
-        );
-        require(success, "delegate call in handler to requestKycStatus() failed");
-
-        users.add(user);
-        vm.stopPrank();
-
+        /// @dev if isAutomation, simulate automation with performUpkeep
         if (isAutomation) {
             _performUpkeep(user, isCompliant);
         }
+
+        /// @dev get recorded logs and update relevant ghosts for requested event and simulated Everest fulfill
+        _handleRequestLogs(user);
     }
 
     /// @dev onlyCompliant
@@ -198,11 +337,16 @@ contract Handler is Test {
     }
 
     /// @dev onlyOwner
-    function withdrawFees(uint256 addressSeed, bool isCompliant, bool isAutomation, bytes calldata compliantCalldata)
-        public
-    {
+    function withdrawFees(
+        uint256 addressSeed,
+        bool isCompliant,
+        bool isAutomation,
+        bytes calldata compliantCalldata,
+        bool isOnTokenTransfer
+    ) public {
         if (g_compliantFeesInLink == 0) {
-            requestKycStatus(addressSeed, isCompliant, isAutomation, compliantCalldata);
+            // requestKycStatus(addressSeed, isCompliant, isAutomation, compliantCalldata);
+            sendRequest(addressSeed, isCompliant, isAutomation, compliantCalldata, isOnTokenTransfer);
         } else {
             /// @dev getCompliantFeesToWithdraw and add it to ghost tracker
             (, bytes memory retData) =
@@ -320,29 +464,32 @@ contract Handler is Test {
         bytes32 requestId = bytes32(uint256(uint160(requestedAddress)));
         bytes memory performData = abi.encode(requestId, requestedAddress, isCompliant);
 
-        vm.recordLogs();
+        // vm.recordLogs();
         vm.prank(forwarder);
         (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
         require(success, "delegate call in handler to performUpkeep() failed");
 
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 fulfilledEventSignature = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
-        bytes32 compliantEventSignature = keccak256("CompliantCheckPassed()");
+        _updatePerformUpkeepGhosts(requestedAddress, isCompliant);
 
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == fulfilledEventSignature) {
-                /// @dev if isCompliant is true, increment ghost value
-                if ((logs[i].topics[3] != bytes32(0))) g_fulfilledRequestIsCompliant++;
-            }
+        // Vm.Log[] memory logs = vm.getRecordedLogs();
+        // bytes32 fulfilledEventSignature = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
+        // bytes32 compliantEventSignature = keccak256("CompliantCheckPassed()");
 
-            if (logs[i].topics[0] == compliantEventSignature) {
-                g_automatedCompliantCheckPassed++;
-            }
-        }
+        // for (uint256 i = 0; i < logs.length; i++) {
+        //     if (logs[i].topics[0] == fulfilledEventSignature) {
+        //         /// @dev if isCompliant is true, increment ghost value
+        //         if ((logs[i].topics[3] != bytes32(0))) {
+        //             g_fulfilledRequestIsCompliant++;
+        //             g_compliantFulfilledEventIsCompliant[requestedAddress] = true;
+        //         }
 
-        g_pendingRequests[requestedAddress] = false;
+        //         g_fulfilledEventsEmitted++;
+        //     }
 
-        if (isCompliant) g_automationIncrement++;
+        //     if (logs[i].topics[0] == compliantEventSignature) {
+        //         g_automatedCompliantCheckPassed++;
+        //     }
+        // }
     }
 
     function _handleOnlyProxyError(bytes memory error) internal {
@@ -353,6 +500,98 @@ contract Handler is Test {
             selector := mload(add(error, 32))
         }
         assertEq(selector, bytes4(keccak256("Compliant__OnlyProxy()")));
+    }
+
+    function _startRequest(uint256 addressSeed, bool isCompliant, bool isAutomation)
+        internal
+        returns (address, uint256)
+    {
+        /// @dev create a user
+        address user = _seedToAddress(addressSeed);
+        require(user != proxyAdmin && user != compliantProxy, "Invalid address used.");
+        /// @dev set the Everest status for the request
+        _setEverestStatus(user, isCompliant);
+        /// @dev deal link to user
+        uint256 amount = _dealLink(user, isAutomation);
+
+        return (user, amount);
+    }
+
+    function _updateRequestGhosts(address user, bool isAutomation, bytes memory compliantCalldata) internal {
+        /// @dev store compliantCalldata in ghost mapping
+        if (isAutomation && compliantCalldata.length > 0) {
+            g_requestedAddressToCalldata[user] = compliantCalldata;
+        }
+
+        /// @dev set request to pending
+        if (isAutomation) {
+            g_pendingRequests[user] = true;
+        }
+
+        /// @dev update totalFeesEarned ghost
+        g_totalFeesEarned += compliant.getFee() - IEverestConsumer(everest).oraclePayment();
+
+        /// @dev increment requests made
+        g_requestsMade++;
+    }
+
+    function _updatePerformUpkeepGhosts(address user, bool isCompliant) internal {
+        /// @dev increment
+        if (isCompliant) g_automationIncrement++;
+
+        g_pendingRequests[user] = false;
+        g_fulfilledUsers[user] = true;
+        g_requestsFulfilled++;
+    }
+
+    function _handleRequestLogs(address user) internal {
+        bytes32 kycStatusRequested = keccak256("KYCStatusRequested(bytes32,address)");
+        bytes32 everestFulfilled = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
+        bytes32 kycStatusRequestFulfilled = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
+        bytes32 compliantCheckPassed = keccak256("CompliantCheckPassed()");
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        for (uint256 i = 0; i < logs.length; i++) {
+            /// @dev handle KYCStatusRequested() event params and ghosts
+            if (logs[i].topics[0] == kycStatusRequested) {
+                bytes32 emittedRequestId = logs[i].topics[1];
+                address emittedUser = address(uint160(uint256(logs[i].topics[2])));
+
+                g_requestedEventRequestId[emittedUser] = emittedRequestId;
+                g_requestedUsers[emittedUser] = true;
+                g_requestedEventsEmitted++;
+            }
+
+            /// @dev handle Everest.Fulfilled() event params and ghost
+            if (logs[i].topics[0] == everestFulfilled) {
+                address revealee = address(uint160(uint256(logs[i].topics[2])));
+                (bytes32 everestRequestId, IEverestConsumer.Status status,) =
+                    abi.decode(logs[i].data, (bytes32, IEverestConsumer.Status, uint40));
+
+                g_everestFulfilledEventRequestId[revealee] = everestRequestId;
+                g_everestFulfilledEventIsCompliant[revealee] = (status == IEverestConsumer.Status.KYCUser);
+                g_everestFulfilledEventsEmitted++;
+            }
+
+            /// @dev handle KYCStatusRequestFulfilled() event params and ghost
+            if (logs[i].topics[0] == kycStatusRequestFulfilled) {
+                console2.log("(logs[i].topics[3] != bytes32(0)):", (logs[i].topics[3] != bytes32(0)));
+
+                /// @dev if isCompliant is true, increment ghost value
+                if ((logs[i].topics[3] != bytes32(0))) {
+                    g_fulfilledRequestIsCompliant++;
+                    g_compliantFulfilledEventIsCompliant[user] = true;
+                }
+
+                g_compliantFulfilledEventsEmitted++;
+            }
+
+            /// @dev handle CompliantCheckPassed() event
+            if (logs[i].topics[0] == compliantCheckPassed) {
+                g_automatedCompliantCheckPassed++;
+            }
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
