@@ -431,7 +431,7 @@ contract Invariant is StdInvariant, BaseTest {
         assertTrue(success, "Invariant violated: Owner should be able to call withdrawFees");
 
         // Case 2: Non-owner should fail
-        vm.assume(user != forwarder);
+        vm.assume(user != owner);
         vm.prank(user);
         (success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
         assertFalse(success, "Invariant violated: Non-owner should not be able to call withdrawFees");
