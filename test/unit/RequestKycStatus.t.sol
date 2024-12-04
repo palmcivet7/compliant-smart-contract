@@ -116,6 +116,21 @@ contract RequestKycStatusTest is BaseTest {
         compliant.requestKycStatus(user, true, ""); // true for automation
     }
 
+    function test_compliant_requestKycStatus_revertsWhen_insufficientFee() public {
+        uint256 balance = LinkTokenInterface(link).balanceOf(user);
+        console2.log("balance:", balance); // 100_000000000000000000
+
+        vm.startPrank(user);
+        LinkTokenInterface(link).transfer(address(1), balance);
+        uint256 balanceAfter = LinkTokenInterface(link).balanceOf(user);
+        assertEq(balanceAfter, 0);
+
+        vm.expectRevert();
+        (bool success,) = address(compliantProxy).call(
+            abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, true, "") // true for automation
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 UTILITY
     //////////////////////////////////////////////////////////////*/
