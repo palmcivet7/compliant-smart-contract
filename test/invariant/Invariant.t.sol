@@ -21,6 +21,7 @@ import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.s
 import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -120,7 +121,7 @@ contract Invariant is StdInvariant, BaseTest {
     /*//////////////////////////////////////////////////////////////
                                INVARIANTS
     //////////////////////////////////////////////////////////////*/
-    // 1. Proxy Protection:
+    // Proxy Protection:
     /// @dev no direct calls (that change state) to the proxy should succeed
     function invariant_onlyProxy_noDirectCallsSucceed() public view {
         assertEq(
@@ -139,9 +140,8 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 2. Pending Request Management:
-    //  For any user address, at most one pending request can exist at a time (s_pendingRequests[user].isPending).
-    //  If a pending request is fulfilled, isPending must be set to false.
+    // Pending Request Management:
+    /// @dev pending requests should only be true whilst waiting for Chainlink Automation to be fulfilled
     function invariant_pendingRequest() public {
         handler.forEachUser(this.checkPendingRequestForUser);
     }
@@ -158,7 +158,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 3. Fees Accounting:
+    // Fees Accounting:
     /// @dev fees available for owner to withdraw should always equal cumulative LINK earned minus any already withdrawn
     function invariant_feesAccounting() public {
         (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getCompliantFeesToWithdraw()"));
@@ -171,7 +171,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 4. KYC Status Consistency:
+    // KYC Status Consistency:
     /// @dev A user marked as compliant (_isCompliant(user)) must have their latest fulfilled KYC request isKYCUser = true.
     function invariant_compliantStatusIntegrity() public {
         handler.forEachUser(this.checkCompliantStatusForUser);
@@ -191,7 +191,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 5. Fee Calculation:
+    // Fee Calculation:
     /// @dev the fee for KYC requests should always be the sum of _calculateCompliantFee() + i_everest.oraclePayment().
     function invariant_feeCalculation_noAutomation() public {
         (, bytes memory retData) = address(compliantProxy).call(abi.encodeWithSignature("getFee()"));
@@ -223,7 +223,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 6. Compliance Logic:
+    // Compliance Logic:
     /// @dev only compliant users can call compliant restricted logic
     function invariant_compliantLogic_manualExecution() public {
         handler.forEachUser(this.checkDoSomethingLogic);
@@ -282,11 +282,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 7. Upkeep Execution: NOTE: THIS WOULD REQUIRE LOCAL CHAINLINK AUTOMATION SIMULATOR
-    //  performUpkeep should only process requests where checkLog indicates that upkeepNeeded is true.
-    //  Automation-related requests (isAutomated = true) should add funds to the Chainlink registry via registry.addFunds.
-
-    // 8. Forwarder Protection:
+    // Forwarder Protection:
     /// @dev only the forwarder can call performUpkeep
     function invariant_onlyForwarder_canCall_performUpkeep() public {
         handler.forEachUser(this.checkForwarderCanCallPerformUpkeep);
@@ -308,7 +304,7 @@ contract Invariant is StdInvariant, BaseTest {
         assertFalse(success, "Invariant violated: Non-forwarder should not be able to call performUpkeep");
     }
 
-    // 9. Event Consistency:
+    // Event Consistency:
     /// @dev assert KYCStatusRequested event is emitted for every request
     function invariant_eventConsistency_kycStatusRequested() public view {
         assertEq(
@@ -379,7 +375,7 @@ contract Invariant is StdInvariant, BaseTest {
         }
     }
 
-    // 10. Fee Transfer Validity:
+    // Fee Transfer Validity:
     //  For any request, the amount of LINK transferred or approved must cover the total fees calculated in _handleFees.
     // function invariant_feeIntegrity() public {
     //     // have a ghost that increments everytime a tx is attempted with -1 less than the required fee amount
@@ -402,7 +398,7 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
-    // 11. Approvals:
+    // Approvals:
     //  LINK approvals to i_everest and the registry must match the required fees for the respective operations.
     function invariant_approval_everest() public view {
         assertEq(
@@ -420,15 +416,36 @@ contract Invariant is StdInvariant, BaseTest {
         );
     }
 
+    // Ownership Management:
+    /// @dev only owner should be able to call withdrawFees
+    function invariant_onlyOwner_canCall_withdrawFees() public {
+        handler.forEachUser(this.checkOwnerCanCallWithdrawFees);
+    }
+
+    function checkOwnerCanCallWithdrawFees(address user) external {
+        address owner = OwnableUpgradeable(address(compliantProxy)).owner();
+
+        // Case 1: Owner should succeed
+        vm.prank(owner);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
+        assertTrue(success, "Invariant violated: Owner should be able to call withdrawFees");
+
+        // Case 2: Non-owner should fail
+        vm.assume(user != forwarder);
+        vm.prank(user);
+        (success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
+        assertFalse(success, "Invariant violated: Non-owner should not be able to call withdrawFees");
+    }
+
     // 12. Initialization Protection:
     //  The initialize function can only be called once, and only when the contract is uninitialized (initializer modifier
     //  ensures this).
 
-    // 13. Ownership Management:
-    //  The owner can withdraw accumulated fees using withdrawFees.
-    //  Only the owner should be able to withdraw the fees (onlyOwner modifier).
-
     // 14. Incremented Value:
     //  s_incrementedValue can only increase via doSomething, and only if the caller is compliant.
     //  s_automatedIncrement can only increase via performUpkeep, and only if the request was automated and the user is compliant.
+
+    // 7. Upkeep Execution: NOTE: THIS WOULD REQUIRE LOCAL CHAINLINK AUTOMATION SIMULATOR
+    //  performUpkeep should only process requests where checkLog indicates that upkeepNeeded is true.
+    //  Automation-related requests (isAutomated = true) should add funds to the Chainlink registry via registry.addFunds.
 }
