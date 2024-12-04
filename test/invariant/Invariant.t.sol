@@ -98,7 +98,8 @@ contract Invariant is StdInvariant, BaseTest {
             forwarder,
             address(everest),
             address(proxyAdmin),
-            registry
+            registry,
+            upkeepId
         );
 
         /// @dev define appropriate function selectors
@@ -385,6 +386,9 @@ contract Invariant is StdInvariant, BaseTest {
     //     // g_insufficientFeeRequest (should == below)
     //     // g_insufficientFeeRevert (should == above)
     //     // g_insufficientFeeSuccess (should == 0)
+
+    // or have a ghost that tracks last LINK amount paid?
+    // and record logs
     // }
 
     /// @dev LINK balance of the contract should decrease by the exact amount transferred to the owner in withdrawFees
@@ -400,6 +404,21 @@ contract Invariant is StdInvariant, BaseTest {
 
     // 11. Approvals:
     //  LINK approvals to i_everest and the registry must match the required fees for the respective operations.
+    function invariant_approval_everest() public view {
+        assertEq(
+            handler.g_lastApprovalEverest(),
+            handler.g_lastEverestFee(),
+            "Invariant violated: Amount approved for Everest spending must match it's required fee."
+        );
+    }
+
+    function invariant_approval_automation() public view {
+        assertEq(
+            handler.g_lastApprovalRegistry(),
+            handler.g_lastAutomationFee(),
+            "Invariant violated: Amount approved for Automation registry spending must match upkeepId minBalance."
+        );
+    }
 
     // 12. Initialization Protection:
     //  The initialize function can only be called once, and only when the contract is uninitialized (initializer modifier

@@ -8,6 +8,8 @@ import {MockAutomationRegistry} from "../mocks/MockAutomationRegistry.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interfaces/LinkTokenInterface.sol";
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
+import {IAutomationRegistryConsumer} from
+    "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
 
 contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
@@ -34,6 +36,8 @@ contract Handler is Test {
     address public proxyAdmin;
     /// @dev Chainlink Automation Registry
     address public registry;
+    /// @dev Chainlink Automation UpkeepId
+    uint256 public upkeepId;
 
     /// @dev track the users in the system (requestedAddresses)
     EnumerableSet.AddressSet internal users;
@@ -90,6 +94,15 @@ contract Handler is Test {
     /// @dev ghost to track requestId emitted by Compliant KYCStatusRequestFulfilled event
     mapping(address user => bytes32 requestId) public g_compliantFulfilledEventRequestId;
 
+    /// @dev ghost to track last everest fee during request
+    uint256 public g_lastEverestFee;
+    /// @dev ghost to track last minBalance for Automation during request
+    uint256 public g_lastAutomationFee;
+    /// @dev ghost to track last amount emitted by Everest approval event
+    uint256 public g_lastApprovalEverest;
+    /// @dev ghost to track last amount emitted by Automation registry approval event
+    uint256 public g_lastApprovalRegistry;
+
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
     /// @dev ghost to track requestedAddresses to compliant status
@@ -110,7 +123,8 @@ contract Handler is Test {
         address _forwarder,
         address _everest,
         address _proxyAdmin,
-        address _registry
+        address _registry,
+        uint256 _upkeepId
     ) {
         compliant = _compliant;
         compliantProxy = _compliantProxy;
@@ -120,6 +134,7 @@ contract Handler is Test {
         everest = _everest;
         proxyAdmin = _proxyAdmin;
         registry = _registry;
+        upkeepId = _upkeepId;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -171,37 +186,6 @@ contract Handler is Test {
 
         /// @dev get recorded logs and update relevant ghosts for requested event and simulated Everest fulfill
         _handleRequestLogs(user);
-    }
-
-    function insufficientFeeRequest(
-        uint256 addressSeed,
-        bool isCompliant,
-        bool isAutomation,
-        bytes calldata compliantCalldata,
-        bool isOnTokenTransfer
-    ) public {
-        /// @dev start request by getting a user and dealing them appropriate amount of link
-        (address user, uint256 amount) = _startRequest(addressSeed, isCompliant, isAutomation);
-        users.add(user);
-
-        /// @dev make sure the fee is insufficient by the smallest possible amount
-        amount -= 1;
-
-        if (isOnTokenTransfer) {
-            bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
-
-            vm.prank(user);
-            vm.expectRevert();
-            bool success = compliant.getLink().transferAndCall(address(compliantProxy), amount, data);
-            require(!success, "Insufficient fees for transferAndCall request should revert.");
-        } else {
-            vm.prank(user);
-            vm.expectRevert();
-            (bool success,) = address(compliantProxy).call(
-                abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, isAutomation, compliantCalldata)
-            );
-            require(!success, "Insufficient fees for requestKycStatus should revert.");
-        }
     }
 
     /// @dev onlyCompliant
@@ -395,6 +379,10 @@ contract Handler is Test {
 
         /// @dev increment requests made
         g_requestsMade++;
+
+        /// @dev update last external fees
+        g_lastEverestFee = IEverestConsumer(everest).oraclePayment();
+        if (isAutomation) g_lastAutomationFee = IAutomationRegistryConsumer(registry).getMinBalance(upkeepId);
     }
 
     function _updatePerformUpkeepGhosts(address user, bool isCompliant) internal {
@@ -411,6 +399,7 @@ contract Handler is Test {
         bytes32 everestFulfilled = keccak256("Fulfilled(bytes32,address,address,uint8,uint40)");
         bytes32 kycStatusRequestFulfilled = keccak256("KYCStatusRequestFulfilled(bytes32,address,bool)");
         bytes32 compliantCheckPassed = keccak256("CompliantCheckPassed()");
+        bytes32 approval = keccak256("Approval(address,address,uint256)");
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
@@ -453,6 +442,19 @@ contract Handler is Test {
             /// @dev handle CompliantCheckPassed() event
             if (logs[i].topics[0] == compliantCheckPassed) {
                 g_automatedCompliantCheckPassed++;
+            }
+
+            /// @dev handle Approval() event
+            if (logs[i].topics[0] == approval) {
+                address spender = address(uint160(uint256(logs[i].topics[2])));
+                uint256 value = abi.decode(logs[i].data, (uint256));
+
+                if (spender == everest) {
+                    g_lastApprovalEverest = value;
+                }
+                if (spender == registry) {
+                    g_lastApprovalRegistry = value;
+                }
             }
         }
     }
