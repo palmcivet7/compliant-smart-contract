@@ -292,12 +292,10 @@ contract Invariant is StdInvariant, BaseTest {
         bytes32 requestId = bytes32(uint256(uint160(user)));
         bytes memory performData = abi.encode(requestId, user, true);
 
-        // Case 1: Forwarder should succeed
         vm.prank(forwarder);
         (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
         assertTrue(success, "Invariant violated: Forwarder should be able to call performUpkeep");
 
-        // Case 2: Non-forwarder should fail
         vm.assume(user != forwarder);
         vm.prank(user);
         (success,) = address(compliantProxy).call(abi.encodeWithSignature("performUpkeep(bytes)", performData));
@@ -433,9 +431,8 @@ contract Invariant is StdInvariant, BaseTest {
         assertFalse(success, "Invariant violated: Non-owner should not be able to call withdrawFees.");
     }
 
-    // 12. Initialization Protection:
-    //  The initialize function can only be called once, and only when the contract is uninitialized (initializer modifier
-    //  ensures this).
+    // Initialization Protection:
+    /// @dev initialize() can only be called once, and should revert when called after
     function invariant_initialize_reverts() public {
         handler.forEachUser(this.checkInitializeReverts);
     }
@@ -446,11 +443,16 @@ contract Invariant is StdInvariant, BaseTest {
         assertFalse(success, "Invariant violated: Initialize should not be callable a second time.");
     }
 
-    // 14. Incremented Value:
-    //  s_incrementedValue can only increase via doSomething, and only if the caller is compliant.
-    //  s_automatedIncrement can only increase via performUpkeep, and only if the request was automated and the user is compliant.
+    // Upkeep Execution:
+    /// @dev Automation-related requests should add funds to the Chainlink registry via registry.addFunds
+    function invariant_requests_withAutomation_addFundsToRegistry() public view {
+        assertEq(
+            LinkTokenInterface(link).balanceOf(registry),
+            handler.g_linkAddedToRegistry(),
+            "Invariant violated: Automated requests should add funds to Chainlink Automation Registry."
+        );
+    }
 
-    // 7. Upkeep Execution: NOTE: THIS WOULD REQUIRE LOCAL CHAINLINK AUTOMATION SIMULATOR
+    //  NOTE: THIS WOULD REQUIRE LOCAL CHAINLINK AUTOMATION SIMULATOR
     //  performUpkeep should only process requests where checkLog indicates that upkeepNeeded is true.
-    //  Automation-related requests (isAutomated = true) should add funds to the Chainlink registry via registry.addFunds.
 }

@@ -103,6 +103,9 @@ contract Handler is Test {
     /// @dev ghost to track last amount emitted by Automation registry approval event
     uint256 public g_lastApprovalRegistry;
 
+    /// @dev ghost to track amount of LINK sent to registry
+    uint256 public g_linkAddedToRegistry;
+
     /// @dev ghost to track withdrawable admin fees
     uint256 public g_compliantFeesInLink;
     /// @dev ghost to track requestedAddresses to compliant status
@@ -372,6 +375,7 @@ contract Handler is Test {
         /// @dev set request to pending
         if (isAutomation) {
             g_pendingRequests[user] = true;
+            g_linkAddedToRegistry += IAutomationRegistryConsumer(registry).getMinBalance(upkeepId);
         }
 
         /// @dev update totalFeesEarned ghost
