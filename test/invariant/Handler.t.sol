@@ -87,10 +87,8 @@ contract Handler is Test {
     mapping(address user => bool isCompliant) public g_everestFulfilledEventIsCompliant;
     /// @dev ghost mapping of user to requestId emitted by Everest.Fulfilled
     mapping(address user => bytes32 everestRequestId) public g_everestFulfilledEventRequestId;
-
     /// @dev ghost to track if fulfilled event from compliant marks user as compliant
     mapping(address user => bool isCompliant) public g_compliantFulfilledEventIsCompliant;
-
     /// @dev ghost to track requestId emitted by Compliant KYCStatusRequestFulfilled event
     mapping(address user => bytes32 requestId) public g_compliantFulfilledEventRequestId;
 
@@ -110,10 +108,10 @@ contract Handler is Test {
     uint256 public g_compliantFeesInLink;
     /// @dev ghost to track requestedAddresses to compliant status
     mapping(address requestedAddress => bool isCompliant) public g_requestedAddressToStatus;
-    /// @dev ghost to track requestedAddresses to compliant calldata
-    mapping(address requestedAddress => bytes compliantCalldata) public g_requestedAddressToCalldata;
     /// @dev ghost to track pending requests
     mapping(address requestedAddress => bool isPending) public g_pendingRequests;
+    /// @dev ghost to track requestedAddresses to compliant calldata
+    mapping(address requestedAddress => bytes compliantCalldata) public g_requestedAddressToCalldata;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -201,7 +199,6 @@ contract Handler is Test {
             (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("doSomething()"));
             require(success, "delegate call in handler to doSomething() failed");
 
-            // update some ghost
             g_manualIncrement++;
         }
     }
@@ -232,7 +229,6 @@ contract Handler is Test {
     }
 
     /// @dev onlyProxy
-    // @review readability/modularity can be improved here
     function externalImplementationCalls(
         uint256 divisor,
         uint256 addressSeed,
@@ -249,71 +245,17 @@ contract Handler is Test {
         /// @dev make direct call to one of external functions
         uint256 choice = divisor % 5;
         if (choice == 0) {
-            directOnTokenTransfer(user, isAutomation, compliantCalldata);
+            _directOnTokenTransfer(user, isAutomation, compliantCalldata);
         } else if (choice == 1) {
-            directRequestKycStatus(user, isAutomation, compliantCalldata);
+            _directRequestKycStatus(user, isAutomation, compliantCalldata);
         } else if (choice == 2) {
-            directDoSomething();
+            _directDoSomething();
         } else if (choice == 3) {
-            directWithdrawFees();
+            _directWithdrawFees();
         } else if (choice == 4) {
-            directInitialize(user);
+            _directInitialize(user);
         } else {
             revert("Invalid choice");
-        }
-    }
-
-    function directOnTokenTransfer(address user, bool isAutomation, bytes memory compliantCalldata) public {
-        uint256 amount;
-        if (isAutomation) amount = compliant.getFeeWithAutomation();
-        else amount = compliant.getFee();
-        deal(link, user, amount);
-
-        bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
-
-        vm.prank(user);
-        try LinkTokenInterface(link).transferAndCall(address(compliant), amount, data) {
-            g_directCallSuccesses++;
-        } catch (bytes memory error) {
-            _handleOnlyProxyError(error);
-        }
-    }
-
-    function directRequestKycStatus(address user, bool isAutomation, bytes memory compliantCalldata) public {
-        uint256 amount;
-        if (isAutomation) amount = compliant.getFeeWithAutomation();
-        else amount = compliant.getFee();
-        deal(link, user, amount);
-
-        vm.prank(user);
-        try compliant.requestKycStatus(user, isAutomation, compliantCalldata) {
-            g_directCallSuccesses++;
-        } catch (bytes memory error) {
-            _handleOnlyProxyError(error);
-        }
-    }
-
-    function directDoSomething() public {
-        try compliant.doSomething() {
-            g_directCallSuccesses++;
-        } catch (bytes memory error) {
-            _handleOnlyProxyError(error);
-        }
-    }
-
-    function directWithdrawFees() public {
-        try compliant.withdrawFees() {
-            g_directCallSuccesses++;
-        } catch (bytes memory error) {
-            _handleOnlyProxyError(error);
-        }
-    }
-
-    function directInitialize(address initialOwner) public {
-        try compliant.initialize(initialOwner) {
-            g_directCallSuccesses++;
-        } catch (bytes memory error) {
-            _handleOnlyProxyError(error);
         }
     }
 
@@ -460,6 +402,60 @@ contract Handler is Test {
                     g_lastApprovalRegistry = value;
                 }
             }
+        }
+    }
+
+    function _directOnTokenTransfer(address user, bool isAutomation, bytes memory compliantCalldata) internal {
+        uint256 amount;
+        if (isAutomation) amount = compliant.getFeeWithAutomation();
+        else amount = compliant.getFee();
+        deal(link, user, amount);
+
+        bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
+
+        vm.prank(user);
+        try LinkTokenInterface(link).transferAndCall(address(compliant), amount, data) {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function _directRequestKycStatus(address user, bool isAutomation, bytes memory compliantCalldata) internal {
+        uint256 amount;
+        if (isAutomation) amount = compliant.getFeeWithAutomation();
+        else amount = compliant.getFee();
+        deal(link, user, amount);
+
+        vm.prank(user);
+        try compliant.requestKycStatus(user, isAutomation, compliantCalldata) {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function _directDoSomething() internal {
+        try compliant.doSomething() {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function _directWithdrawFees() internal {
+        try compliant.withdrawFees() {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
+        }
+    }
+
+    function _directInitialize(address initialOwner) internal {
+        try compliant.initialize(initialOwner) {
+            g_directCallSuccesses++;
+        } catch (bytes memory error) {
+            _handleOnlyProxyError(error);
         }
     }
 

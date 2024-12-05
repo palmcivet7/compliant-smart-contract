@@ -374,17 +374,6 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // Fee Transfer Validity:
-    //  For any request, the amount of LINK transferred or approved must cover the total fees calculated in _handleFees.
-    // function invariant_feeIntegrity() public {
-    //     // have a ghost that increments everytime a tx is attempted with -1 less than the required fee amount
-    //     // g_insufficientFeeRequest (should == below)
-    //     // g_insufficientFeeRevert (should == above)
-    //     // g_insufficientFeeSuccess (should == 0)
-
-    // or have a ghost that tracks last LINK amount paid?
-    // and record logs
-    // }
-
     /// @dev LINK balance of the contract should decrease by the exact amount transferred to the owner in withdrawFees
     function invariant_linkBalanceIntegrity() public view {
         uint256 balance = LinkTokenInterface(link).balanceOf(address(compliantProxy));
