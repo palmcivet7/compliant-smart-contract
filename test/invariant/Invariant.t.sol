@@ -399,7 +399,7 @@ contract Invariant is StdInvariant, BaseTest {
     }
 
     // Approvals:
-    //  LINK approvals to i_everest and the registry must match the required fees for the respective operations.
+    /// @dev LINK approvals to everest and the registry must match the required fees for the respective operations
     function invariant_approval_everest() public view {
         assertEq(
             handler.g_lastApprovalEverest(),
@@ -419,27 +419,32 @@ contract Invariant is StdInvariant, BaseTest {
     // Ownership Management:
     /// @dev only owner should be able to call withdrawFees
     function invariant_onlyOwner_canCall_withdrawFees() public {
-        handler.forEachUser(this.checkOwnerCanCallWithdrawFees);
-    }
-
-    function checkOwnerCanCallWithdrawFees(address user) external {
-        address owner = OwnableUpgradeable(address(compliantProxy)).owner();
-
-        // Case 1: Owner should succeed
         vm.prank(owner);
         (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
         assertTrue(success, "Invariant violated: Owner should be able to call withdrawFees");
 
-        // Case 2: Non-owner should fail
+        handler.forEachUser(this.checkOwnerCanCallWithdrawFees);
+    }
+
+    function checkOwnerCanCallWithdrawFees(address user) external {
         vm.assume(user != owner);
         vm.prank(user);
-        (success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
-        assertFalse(success, "Invariant violated: Non-owner should not be able to call withdrawFees");
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("withdrawFees()"));
+        assertFalse(success, "Invariant violated: Non-owner should not be able to call withdrawFees.");
     }
 
     // 12. Initialization Protection:
     //  The initialize function can only be called once, and only when the contract is uninitialized (initializer modifier
     //  ensures this).
+    function invariant_initialize_reverts() public {
+        handler.forEachUser(this.checkInitializeReverts);
+    }
+
+    function checkInitializeReverts(address user) external {
+        vm.prank(user);
+        (bool success,) = address(compliantProxy).call(abi.encodeWithSignature("initialize()"));
+        assertFalse(success, "Invariant violated: Initialize should not be callable a second time.");
+    }
 
     // 14. Incremented Value:
     //  s_incrementedValue can only increase via doSomething, and only if the caller is compliant.
