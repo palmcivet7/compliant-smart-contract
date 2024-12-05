@@ -432,6 +432,32 @@ contract Invariant is StdInvariant, BaseTest {
         assertFalse(success, "Invariant violated: Initialize should not be callable a second time.");
     }
 
+    // Compliant Calldata:
+    /// @dev compliant calldata stored for user should only be there whilst request is pending
+    function invariant_compliantCalldata_storedCorrectly() public {
+        handler.forEachUser(this.checkCompliantCalldata);
+    }
+
+    function checkCompliantCalldata(address user) external {
+        (, bytes memory retData) =
+            address(compliantProxy).call(abi.encodeWithSignature("getPendingRequest(address)", user));
+        Compliant.PendingRequest memory request = abi.decode(retData, (Compliant.PendingRequest));
+
+        if (request.isPending) {
+            assertEq(
+                request.compliantCalldata,
+                handler.g_requestedAddressToCalldata(user),
+                "Invariant violated: Compliant calldata mapped to user should be consistent when request is pending."
+            );
+        } else {
+            assertEq(
+                request.compliantCalldata,
+                "",
+                "Invariant violated: Compliant calldata should be not be stored when request is not pending."
+            );
+        }
+    }
+
     // Upkeep Execution:
     /// @dev Automation-related requests should add funds to the Chainlink registry via registry.addFunds
     function invariant_requests_withAutomation_addFundsToRegistry() public view {
