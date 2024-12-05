@@ -379,6 +379,10 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         return i_upkeepId;
     }
 
+    function getProxy() external view returns (address) {
+        return i_proxy;
+    }
+
     function getPendingRequest(address user) external view returns (PendingRequest memory) {
         return s_pendingRequests[user];
     }
