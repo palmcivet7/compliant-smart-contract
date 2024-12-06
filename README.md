@@ -54,3 +54,7 @@ A `pendingRequest` in the context of this system refers to requests that are pen
 ---
 
 All user facing functions that change state can only be called via proxy.
+
+---
+
+For Certora: export CERTORAKEY and run `certoraRun ./certora/conf/Compliant.conf`

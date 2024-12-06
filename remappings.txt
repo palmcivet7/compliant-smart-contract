@@ -1,0 +1,4 @@
+@everest/contracts/=lib/everest-chainlink-consumer/contracts/
+@chainlink/contracts/=lib/chainlink/contracts/
+@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@openzeppelin/contracts/=lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/
