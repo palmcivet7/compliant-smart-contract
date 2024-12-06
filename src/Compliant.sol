@@ -121,7 +121,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
                                 EXTERNAL
     //////////////////////////////////////////////////////////////*/
     /// @notice transferAndCall LINK to this address to skip executing 2 txs with approve and requestKycStatus
-    /// @param amount fee to pay for the request get it from getFee() or getFeeWithAutomation()
+    /// @param amount fee to pay for the request - get it from getFee() or getFeeWithAutomation()
     /// @param data encoded data should contain the user address to request the kyc status of, a boolean
     /// indicating whether automation should be used to subsequently execute logic based on the immediate result,
     /// and arbitrary data to be passed to compliant restricted logic
@@ -361,8 +361,8 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         return s_compliantFeesInLink;
     }
 
-    function getEverest() external view returns (IEverestConsumer) {
-        return i_everest;
+    function getEverest() external view returns (address) {
+        return address(i_everest);
     }
 
     function getLink() external view returns (LinkTokenInterface) {
