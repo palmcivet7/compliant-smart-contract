@@ -25,7 +25,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     //////////////////////////////////////////////////////////////*/
     error Compliant__OnlyProxy();
     error Compliant__OnlyLinkToken();
-    error Compliant__InsufficientLinkTransferAmount(uint256 insufficientAmount, uint256 requiredAmount);
+    error Compliant__InsufficientLinkTransferAmount(uint256 requiredAmount);
     error Compliant__NonCompliantUser(address nonCompliantUser);
     error Compliant__PendingRequestExists(address pendingRequestedAddress);
     error Compliant__OnlyForwarder();
@@ -132,7 +132,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
             abi.decode(data, (address, bool, bytes));
 
         uint256 fees = _handleFees(isAutomatedRequest, true);
-        if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(amount, fees);
+        if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(fees);
 
         _requestKycStatus(user, isAutomatedRequest, compliantCalldata);
     }
@@ -285,7 +285,9 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         }
 
         if (!isOnTokenTransfer) {
-            i_link.transferFrom(msg.sender, address(this), totalFee);
+            if (!i_link.transferFrom(msg.sender, address(this), totalFee)) {
+                revert Compliant__InsufficientLinkTransferAmount(totalFee);
+            }
         }
 
         if (isAutomated) {
