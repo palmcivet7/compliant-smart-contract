@@ -6,6 +6,7 @@
 methods {
     function getProxy() external returns(address) envfree;
     function getCompliantFeesToWithdraw() external returns(uint256) envfree;
+    function getPendingRequest(address) external returns(Compliant.PendingRequest) envfree;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -30,6 +31,10 @@ persistent ghost mathint g_totalFeesWithdrawn {
     init_state axiom g_totalFeesWithdrawn == 0;
 }
 
+persistent ghost mapping(address => bool) g_pendingRequests {
+    init_state axiom forall address a. g_pendingRequests[a] == false;
+}
+
 /*//////////////////////////////////////////////////////////////
                              HOOKS
 //////////////////////////////////////////////////////////////*/
@@ -38,11 +43,18 @@ hook Sstore s_compliantFeesInLink uint256 newValue (uint256 oldValue) {
     else g_totalFeesWithdrawn = g_totalFeesWithdrawn + oldValue;
 }
 
+hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newValue (bool oldValue) {
+    if (newValue != oldValue) g_pendingRequests[a] = newValue;
+}
+
 /*//////////////////////////////////////////////////////////////
                            INVARIANTS
 //////////////////////////////////////////////////////////////*/
 invariant feesAccounting()
     to_mathint(getCompliantFeesToWithdraw()) == g_totalFeesEarned - g_totalFeesWithdrawn;
+
+invariant pendingRequests(address a)
+    getPendingRequest(a).isPending == g_pendingRequests[a];
 
 /*//////////////////////////////////////////////////////////////
                              RULES
