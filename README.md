@@ -58,3 +58,7 @@ All user facing functions that change state can only be called via proxy.
 ---
 
 For Certora: export CERTORAKEY and run `certoraRun ./certora/conf/Compliant.conf`
+
+---
+
+This project uses a [forked version of the EverestConsumer](https://github.com/palmcivet7/everest-chainlink-consumer) with updated Chainlink function names and a vitally important fix to the IEverestConsumer mislabelling bug which would've returned the incorrect Compliant status.
