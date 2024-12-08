@@ -365,8 +365,8 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         return address(i_everest);
     }
 
-    function getLink() external view returns (LinkTokenInterface) {
-        return i_link;
+    function getLink() external view returns (address) {
+        return address(i_link);
     }
 
     function getLinkUsdFeed() external view returns (AggregatorV3Interface) {

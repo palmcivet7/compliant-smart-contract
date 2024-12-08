@@ -1,4 +1,4 @@
-/// Verification of Compliant
+// Verification of Compliant
 
 /*//////////////////////////////////////////////////////////////
                             METHODS
@@ -7,6 +7,9 @@ methods {
     function getProxy() external returns(address) envfree;
     function getCompliantFeesToWithdraw() external returns(uint256) envfree;
     function getPendingRequest(address) external returns(Compliant.PendingRequest) envfree;
+    function getEverest() external returns(address) envfree;
+    function getIsCompliant(address) external returns (bool) envfree;
+    function getLink() external returns (address) envfree;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -67,5 +70,16 @@ rule directCallsRevert(method f) filtered {f -> canChangeState(f)} {
     require currentContract != getProxy();
 
     f@withrevert(e, args);
+    assert lastReverted;
+}
+
+/// @notice onTokenTransfer should revert if not called by LINK token
+rule onTokenTransfer_revertsWhen_notLink() {
+    env e;
+    calldataarg args;
+
+    require e.msg.sender != getLink();
+
+    onTokenTransfer@withrevert(e, args);
     assert lastReverted;
 }

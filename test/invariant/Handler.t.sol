@@ -162,13 +162,14 @@ contract Handler is Test {
             bytes memory data = abi.encode(user, isAutomation, compliantCalldata);
             /// @dev send request with onTokenTransfer
             vm.startPrank(user);
-            bool success = compliant.getLink().transferAndCall(address(compliantProxy), amount, data);
+            bool success =
+                LinkTokenInterface(compliant.getLink()).transferAndCall(address(compliantProxy), amount, data);
             require(success, "transferAndCall in handler failed");
             vm.stopPrank();
         } else {
             /// @dev approve compliantProxy to spend link
             vm.startPrank(user);
-            compliant.getLink().approve(address(compliantProxy), amount);
+            LinkTokenInterface(compliant.getLink()).approve(address(compliantProxy), amount);
             /// @dev requestKycStatus
             (bool success,) = address(compliantProxy).call(
                 abi.encodeWithSignature("requestKycStatus(address,bool,bytes)", user, isAutomation, compliantCalldata)
