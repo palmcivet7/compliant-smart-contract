@@ -57,7 +57,7 @@ All user facing functions that change state can only be called via proxy.
 
 ---
 
-For Certora: export CERTORAKEY and run `certoraRun ./certora/conf/Compliant.conf`
+For Certora: `export CERTORAKEY= <YOUR_KEY_HERE>` and run `certoraRun ./certora/conf/Compliant.conf`
 
 ---
 
