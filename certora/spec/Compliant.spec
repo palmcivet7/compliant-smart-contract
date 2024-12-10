@@ -10,6 +10,7 @@ methods {
     function getEverest() external returns(address) envfree;
     function getIsCompliant(address) external returns (bool) envfree;
     function getLink() external returns (address) envfree;
+    function checkLog(Compliant.Log,bytes) external returns (bool,bytes);
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -81,5 +82,17 @@ rule onTokenTransfer_revertsWhen_notLink() {
     require e.msg.sender != getLink();
 
     onTokenTransfer@withrevert(e, args);
+    assert lastReverted;
+}
+
+/// @notice checkLog is simulated offchain by CLA nodes and should revert
+rule checkLogReverts() {
+    env e;
+    calldataarg args;
+    
+    require e.tx.origin != 0;
+    require e.tx.origin != 0x1111111111111111111111111111111111111111;
+
+    checkLog@withrevert(e, args);
     assert lastReverted;
 }
