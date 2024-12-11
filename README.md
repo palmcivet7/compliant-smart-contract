@@ -1,6 +1,27 @@
 # Compliant Smart Contract
 
-This project demonstrates a compliant smart contract. Users can interact with this contract to request the KYC status of an address and automatically execute logic based on the result.
+This project demonstrates a compliant smart contract. The `Compliant` contract be can interacted with to request the KYC status of an address and automatically execute logic based on the result.
+
+## Table of Contents
+
+- [Compliant Smart Contract](#compliant-smart-contract)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [How does the compliance work?](#how-does-the-compliance-work)
+  - [Compliant.sol](#compliantsol)
+  - [Testing](#testing)
+  - [User Flow](#user-flow)
+  - [Deployment](#deployment)
+
+## Overview
+
+## How does the compliance work?
+
+Requests for the KYC status of an address are made through the Chainlink network to a highly regulated provider of private, contract level and sybil resistant user data.
+
+The address being requested has been sybil resistantly linked to someone who has completed KYC with that regulated entity.
+
+Compliant restricted logic can only be executed on behalf of users who meet this criteria.
 
 ## Compliant.sol
 
