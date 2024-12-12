@@ -19,7 +19,7 @@ This project demonstrates a compliant smart contract. The `Compliant` contract b
 
 Requests for the KYC status of an address are made through the Chainlink network to a highly regulated provider of private, contract level and sybil resistant user data.
 
-The address being requested has been sybil resistantly linked to someone who has completed KYC with that regulated entity.
+The request is for whether the address being queried has been sybil resistantly linked to someone who has completed KYC with that regulated entity or not.
 
 Compliant restricted logic can only be executed on behalf of users who meet this criteria.
 
