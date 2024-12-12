@@ -34,6 +34,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
+    /// @notice this struct is only used for requests that are pending Chainlink Automation
     /// @param compliantCalldata arbitrary data to pass to compliantly-restricted function if applicable
     /// @param isPending if this is true and a Fulfilled event is emitted by Everest, Chainlink Automation will perform
     struct PendingRequest {
