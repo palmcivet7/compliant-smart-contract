@@ -20,29 +20,29 @@ contract MockEverestConsumer {
     /*//////////////////////////////////////////////////////////////
                                VARIABLES
     //////////////////////////////////////////////////////////////*/
-    struct Request {
-        bool isFulfilled; // 1 byte - slot 0
-        bool isCanceled; // 1 byte - slot 0
-        bool isHumanAndUnique; // 1 byte - slot 0
-        bool isKYCUser; // 1 byte - slot 0
-        address revealer; // 20 bytes - slot 0
-        address revealee; // 20 bytes - slot 1
-        // `kycTimestamp` is zero if the status is not `KYCUser`,
-        // otherwise it is an epoch timestamp that represents the KYC date
-        uint40 kycTimestamp; // 5 bytes - slot 1
-        // expiration = block.timestamp while `requestStatus` + 5 minutes.
-        // If `isFulfilled` and `isCanceled` are false by this time -
-        // the the owner of the request can cancel its
-        // request using `cancelRequest` and return paid link tokens
-        uint40 expiration; // 5 bytes - slot 1
-    }
+    // struct Request {
+    //     bool isFulfilled; // 1 byte - slot 0
+    //     bool isCanceled; // 1 byte - slot 0
+    //     bool isHumanAndUnique; // 1 byte - slot 0
+    //     bool isKYCUser; // 1 byte - slot 0
+    //     address revealer; // 20 bytes - slot 0
+    //     address revealee; // 20 bytes - slot 1
+    //     // `kycTimestamp` is zero if the status is not `KYCUser`,
+    //     // otherwise it is an epoch timestamp that represents the KYC date
+    //     uint40 kycTimestamp; // 5 bytes - slot 1
+    //     // expiration = block.timestamp while `requestStatus` + 5 minutes.
+    //     // If `isFulfilled` and `isCanceled` are false by this time -
+    //     // the the owner of the request can cancel its
+    //     // request using `cancelRequest` and return paid link tokens
+    //     uint40 expiration; // 5 bytes - slot 1
+    // }
 
     address internal immutable i_link;
 
     uint256 internal s_oraclePayment = 1e17;
     bytes32 internal s_latestSentRequestId;
-    mapping(bytes32 => Request) internal s_requests;
-    mapping(address revealee => Request) internal s_requestsByRevealee;
+    mapping(bytes32 => IEverestConsumer.Request) internal s_requests;
+    mapping(address revealee => IEverestConsumer.Request) internal s_requestsByRevealee;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -103,7 +103,7 @@ contract MockEverestConsumer {
         address revealee,
         uint40 kycTimestamp
     ) external {
-        Request memory request;
+        IEverestConsumer.Request memory request;
 
         request.isCanceled = isCanceled;
         request.isHumanAndUnique = isHumanAndUnique;
@@ -123,7 +123,7 @@ contract MockEverestConsumer {
     /*//////////////////////////////////////////////////////////////
                                  GETTER
     //////////////////////////////////////////////////////////////*/
-    function getLatestFulfilledRequest(address _revealee) external view returns (Request memory) {
+    function getLatestFulfilledRequest(address _revealee) external view returns (IEverestConsumer.Request memory) {
         return s_requestsByRevealee[_revealee];
     }
 
