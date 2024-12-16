@@ -20,6 +20,8 @@ methods {
     function getForwarder() external returns (address) envfree;
     function getFeeWithAutomation() external returns (uint256) envfree;
     function getUpkeepId() external returns (uint256) envfree;
+    
+    // review these
     function checkLog(Compliant.Log,bytes) external returns (bool,bytes);
     function initialize(address) external envfree;
 
@@ -46,10 +48,6 @@ definition canChangeState(method f) returns bool =
     f.selector == sig:withdrawFees().selector ||
     f.selector == sig:initialize(address).selector;
 
-definition canRequestStatus(method f) returns bool = 
-	f.selector == sig:onTokenTransfer(address,uint256,bytes).selector || 
-	f.selector == sig:requestKycStatus(address,bool,bytes).selector;
-
 /*//////////////////////////////////////////////////////////////
                            FUNCTIONS
 //////////////////////////////////////////////////////////////*/
@@ -75,9 +73,14 @@ persistent ghost mapping(address => bool) g_pendingRequests {
     init_state axiom forall address a. g_pendingRequests[a] == false;
 }
 
+persistent ghost mathint g_manualIncrement {
+    init_state axiom g_manualIncrement == 0;
+}
+
 /*//////////////////////////////////////////////////////////////
                              HOOKS
 //////////////////////////////////////////////////////////////*/
+/// @notice everytime the value stored in `s_compliantFeesInLink` changes, we track it in the ghosts
 hook Sstore s_compliantFeesInLink uint256 newValue (uint256 oldValue) {
     if (newValue >= oldValue) g_totalFeesEarned = g_totalFeesEarned + newValue - oldValue;
     else g_totalFeesWithdrawn = g_totalFeesWithdrawn + oldValue;
@@ -85,6 +88,10 @@ hook Sstore s_compliantFeesInLink uint256 newValue (uint256 oldValue) {
 
 hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newValue (bool oldValue) {
     if (newValue != oldValue) g_pendingRequests[a] = newValue;
+}
+
+hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
+    if (newValue > oldValue) g_manualIncrement = g_manualIncrement + 1;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -197,23 +204,6 @@ rule doSomething_revertsWhen_notCompliant() {
 
     doSomething@withrevert(e, args);
     assert lastReverted;
-}
-
-rule feeCalculation_noAutomation() {
-    env e;
-    address user;
-    bytes arbitraryData;
-    require link == getLink();
-    require e.msg.sender != getEverest();
-    require e.msg.sender != currentContract;
-
-    uint256 balance_before = link.balanceOf(e.msg.sender);
-
-    requestKycStatus(e, user, false, arbitraryData); // false for noAutomation
-
-    uint256 balance_after = link.balanceOf(e.msg.sender);
-
-    assert balance_before == balance_after + getFee();
 }
 
 rule requestKycStatus_feeCalculation() {
