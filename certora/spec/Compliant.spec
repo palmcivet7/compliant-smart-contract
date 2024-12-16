@@ -1,6 +1,9 @@
 // Verification of Compliant
 
-using EverestConsumer as everest;
+using MockEverestConsumer as everest;
+using MockForwarder as forwarder;
+using MockAutomationRegistry as registry;
+using ERC677 as link;
 
 /*//////////////////////////////////////////////////////////////
                             METHODS
@@ -13,18 +16,23 @@ methods {
     function getIsCompliant(address) external returns (bool) envfree;
     function getLink() external returns (address) envfree;
     function getFee() external returns (uint256) envfree;
+    function getCompliantFee() external returns (uint256) envfree;
     function getForwarder() external returns (address) envfree;
     function getFeeWithAutomation() external returns (uint256) envfree;
+    function getUpkeepId() external returns (uint256) envfree;
     function checkLog(Compliant.Log,bytes) external returns (bool,bytes);
     function initialize(address) external envfree;
 
-    // Everest function
+    // External contract functions
     function everest.getLatestFulfilledRequest(address) external returns (IEverestConsumer.Request);
+    function everest.oraclePayment() external returns (uint256) envfree;
+    function forwarder.getRegistry() external returns (address) envfree;
+    function registry.getMinBalance(uint256) external returns (uint96) envfree;
+    function link.balanceOf(address) external returns (uint256) envfree;
 
     // Harness helper functions
     function isAutomation(address,bytes) external returns (bytes) envfree;
     function noAutomation(address,bytes) external returns (bytes) envfree;
-    // function getEverestCompliance(address) external returns (bool) envfree;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -37,6 +45,10 @@ definition canChangeState(method f) returns bool =
     f.selector == sig:performUpkeep(bytes).selector ||
     f.selector == sig:withdrawFees().selector ||
     f.selector == sig:initialize(address).selector;
+
+definition canRequestStatus(method f) returns bool = 
+	f.selector == sig:onTokenTransfer(address,uint256,bytes).selector || 
+	f.selector == sig:requestKycStatus(address,bool,bytes).selector;
 
 /*//////////////////////////////////////////////////////////////
                            FUNCTIONS
@@ -78,11 +90,15 @@ hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newV
 /*//////////////////////////////////////////////////////////////
                            INVARIANTS
 //////////////////////////////////////////////////////////////*/
+/// @notice total fees to withdraw must equal total fees earned minus total fees already withdrawn
 invariant feesAccounting()
     to_mathint(getCompliantFeesToWithdraw()) == g_totalFeesEarned - g_totalFeesWithdrawn;
 
 invariant pendingRequests(address a)
     getPendingRequest(a).isPending == g_pendingRequests[a];
+
+// invariant feeCalculation_noAutomation()
+//     to_mathint(getFee()) == getExpectedFee();
 
 // invariant compliantStatus(address a)
 //     getIsCompliant(a) == getEverestCompliance(a);
@@ -112,27 +128,7 @@ rule onTokenTransfer_revertsWhen_notLink() {
     assert lastReverted;
 }
 
-// /// @notice onTokenTransfer should revert if fee amount is insufficient
-// rule onTokenTransfer_revertsWhen_insufficientFee_noAutomation() {
-//     env e;
-//     address addr;
-//     uint256 amount;
-//     bytes compliantCalldata;
-//     // bytes data = noAutomation(addr, compliantCalldata);
-//     bytes data;
-
-//     // require amount < getFee();
-//     require e.msg.sender == getLink();
-//     require currentContract == getProxy();
-//     require e.msg.value == 0;
-
-//     onTokenTransfer@withrevert(e, addr, amount, data);
-//     assert lastReverted => 
-//         (amount < getFee() && data == noAutomation(addr, compliantCalldata)) ||
-//         (amount < getFeeWithAutomation() && data == isAutomation(addr, compliantCalldata));
-// }
-
-/// @notice onTokenTransfer should revert if fee amount is insufficient
+/// @notice onTokenTransfer should revert if fee amount is insufficient with no automation
 rule onTokenTransfer_revertsWhen_insufficientFee_noAutomation() {
     env e;
     address addr;
@@ -146,19 +142,19 @@ rule onTokenTransfer_revertsWhen_insufficientFee_noAutomation() {
     assert lastReverted;
 }
 
-// /// @notice onTokenTransfer should revert if fee amount is insufficient
-// rule onTokenTransfer_revertsWhen_insufficientFee_withAutomation() {
-//     env e;
-//     address addr;
-//     uint256 amount;
-//     bytes compliantCalldata;
-//     bytes data = isAutomation(addr, compliantCalldata);
+/// @notice onTokenTransfer should revert if fee amount is insufficient with automation
+rule onTokenTransfer_revertsWhen_insufficientFee_withAutomation() {
+    env e;
+    address addr;
+    uint256 amount;
+    bytes compliantCalldata;
+    bytes data = isAutomation(addr, compliantCalldata);
 
-//     require amount < getFeeWithAutomation();
+    require amount < getFeeWithAutomation();
 
-//     onTokenTransfer@withrevert(e, addr, amount, data);
-//     assert lastReverted;
-// }
+    onTokenTransfer@withrevert(e, addr, amount, data);
+    assert lastReverted;
+}
 
 /// @notice checkLog is simulated offchain by CLA nodes and should revert
 rule checkLogReverts() {
@@ -201,4 +197,55 @@ rule doSomething_revertsWhen_notCompliant() {
 
     doSomething@withrevert(e, args);
     assert lastReverted;
+}
+
+rule feeCalculation_noAutomation() {
+    env e;
+    address user;
+    bytes arbitraryData;
+    require link == getLink();
+    require e.msg.sender != getEverest();
+    require e.msg.sender != currentContract;
+
+    uint256 balance_before = link.balanceOf(e.msg.sender);
+
+    requestKycStatus(e, user, false, arbitraryData); // false for noAutomation
+
+    uint256 balance_after = link.balanceOf(e.msg.sender);
+
+    assert balance_before == balance_after + getFee();
+}
+
+rule requestKycStatus_feeCalculation() {
+    env e;
+    address user;
+    bool isAutomation;
+    bytes arbitraryData;
+    require link == getLink();
+    require e.msg.sender != getEverest();
+    require e.msg.sender != currentContract;
+    if (isAutomation) require e.msg.sender != forwarder.getRegistry();
+
+    uint256 balance_before = link.balanceOf(e.msg.sender);
+
+    requestKycStatus(e, user, isAutomation, arbitraryData);
+
+    uint256 balance_after = link.balanceOf(e.msg.sender);
+
+    if (isAutomation) assert balance_before == balance_after + getFeeWithAutomation();
+    else assert balance_before == balance_after + getFee();
+}
+
+rule onTokenTransfer_feeCalculation() {
+    env e;
+    address user;
+    uint256 amount;
+    bytes arbitraryData;
+    bytes data;
+    require data == isAutomation(user, arbitraryData) || data == noAutomation(user, arbitraryData);
+
+    onTokenTransfer(e, user, amount, data);
+
+    if (data == isAutomation(user, arbitraryData)) assert amount >= getFeeWithAutomation();
+    else assert amount >= getFee();
 }

@@ -24,9 +24,4 @@ contract Harness is Compliant {
     function noAutomation(address user, bytes memory compliantCalldata) external returns (bytes memory) {
         return abi.encode(user, false, compliantCalldata);
     }
-
-    // function getEverestCompliance(address user) external view returns (bool) {
-    //     IEverestConsumer.Request memory request = i_everest.getLatestFulfilledRequest(user);
-    //     return request.isKYCUser;
-    // }
 }
