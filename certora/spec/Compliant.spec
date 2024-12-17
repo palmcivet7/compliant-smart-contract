@@ -20,6 +20,7 @@ methods {
     function getForwarder() external returns (address) envfree;
     function getFeeWithAutomation() external returns (uint256) envfree;
     function getUpkeepId() external returns (uint256) envfree;
+    function owner() external returns (address) envfree;
     
     // review these
     function checkLog(Compliant.Log,bytes) external returns (bool,bytes);
@@ -35,6 +36,7 @@ methods {
     // Harness helper functions
     function isAutomation(address,bytes) external returns (bytes) envfree;
     function noAutomation(address,bytes) external returns (bytes) envfree;
+    function performData(address,bool) external returns (bytes) envfree;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -47,6 +49,10 @@ definition canChangeState(method f) returns bool =
     f.selector == sig:performUpkeep(bytes).selector ||
     f.selector == sig:withdrawFees().selector ||
     f.selector == sig:initialize(address).selector;
+
+definition canRequestStatus(method f) returns bool = 
+	f.selector == sig:onTokenTransfer(address,uint256,bytes).selector || 
+	f.selector == sig:requestKycStatus(address,bool,bytes).selector;
 
 /*//////////////////////////////////////////////////////////////
                            FUNCTIONS
@@ -86,6 +92,7 @@ hook Sstore s_compliantFeesInLink uint256 newValue (uint256 oldValue) {
     else g_totalFeesWithdrawn = g_totalFeesWithdrawn + oldValue;
 }
 
+/// @notice track everytime the `PendingRequest.isPending` mapped to a user in `s_pendingRequests` changes
 hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newValue (bool oldValue) {
     if (newValue != oldValue) g_pendingRequests[a] = newValue;
 }
@@ -101,14 +108,9 @@ hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
 invariant feesAccounting()
     to_mathint(getCompliantFeesToWithdraw()) == g_totalFeesEarned - g_totalFeesWithdrawn;
 
+/// @notice pending requests should only be true whilst waiting for Chainlink Automation
 invariant pendingRequests(address a)
     getPendingRequest(a).isPending == g_pendingRequests[a];
-
-// invariant feeCalculation_noAutomation()
-//     to_mathint(getFee()) == getExpectedFee();
-
-// invariant compliantStatus(address a)
-//     getIsCompliant(a) == getEverestCompliance(a);
 
 /*//////////////////////////////////////////////////////////////
                              RULES
@@ -135,31 +137,19 @@ rule onTokenTransfer_revertsWhen_notLink() {
     assert lastReverted;
 }
 
-/// @notice onTokenTransfer should revert if fee amount is insufficient with no automation
-rule onTokenTransfer_revertsWhen_insufficientFee_noAutomation() {
+/// @notice onTokenTransfer should revert if fee amount is insufficient
+rule onTokenTransfer_revertsWhen_insufficientFee() {
     env e;
-    address addr;
+    address user;
     uint256 amount;
-    bytes compliantCalldata;
-    bytes data = noAutomation(addr, compliantCalldata);
+    bytes arbitraryData;
+    bytes data;
+    require data == isAutomation(user, arbitraryData) || data == noAutomation(user, arbitraryData);
 
-    require amount < getFee();
+    if (data == isAutomation(user, arbitraryData)) require amount < getFeeWithAutomation();
+    else require amount < getFee();
 
-    onTokenTransfer@withrevert(e, addr, amount, data);
-    assert lastReverted;
-}
-
-/// @notice onTokenTransfer should revert if fee amount is insufficient with automation
-rule onTokenTransfer_revertsWhen_insufficientFee_withAutomation() {
-    env e;
-    address addr;
-    uint256 amount;
-    bytes compliantCalldata;
-    bytes data = isAutomation(addr, compliantCalldata);
-
-    require amount < getFeeWithAutomation();
-
-    onTokenTransfer@withrevert(e, addr, amount, data);
+    onTokenTransfer@withrevert(e, user, amount, data);
     assert lastReverted;
 }
 
@@ -206,6 +196,7 @@ rule doSomething_revertsWhen_notCompliant() {
     assert lastReverted;
 }
 
+/// @notice fee calculation for requestKycStatus should be correct
 rule requestKycStatus_feeCalculation() {
     env e;
     address user;
@@ -226,6 +217,7 @@ rule requestKycStatus_feeCalculation() {
     else assert balance_before == balance_after + getFee();
 }
 
+/// @notice fee calculation for onTokenTransfer should be correct
 rule onTokenTransfer_feeCalculation() {
     env e;
     address user;
@@ -238,4 +230,64 @@ rule onTokenTransfer_feeCalculation() {
 
     if (data == isAutomation(user, arbitraryData)) assert amount >= getFeeWithAutomation();
     else assert amount >= getFee();
+}
+
+/// @notice only owner should be able to call withdrawFees
+rule withdrawFees_revertsWhen_notOwner() {
+    env e;
+    require currentContract == getProxy();
+    require e.msg.sender != owner();
+
+    withdrawFees@withrevert(e);
+    assert lastReverted;
+}
+
+/// @notice LINK balance of the contract should decrease by the exact amount transferred to the owner in withdrawFees
+rule withdrawFees_balanceIntegrity() {
+    env e;
+    require e.msg.sender != currentContract;
+    require link == getLink();
+    uint256 feesToWithdraw = getCompliantFeesToWithdraw();
+
+    uint256 balance_before = link.balanceOf(currentContract);
+    withdrawFees(e);
+    uint256 balance_after = link.balanceOf(currentContract);
+
+    assert balance_after == balance_before - feesToWithdraw;
+}
+
+/// manual incremented value consistency
+/// automated incremented value consistency
+// event consistency:
+/// KYCStatusRequested event is emitted for every request
+/// KYCStatusRequestFulfilled event emitted for fulfilled *AUTOMATED* requests
+/// KYCStatusRequestFulfilled event should emit the correct isCompliant status
+
+/// compliant calldata stored for user should only be there whilst request is pending
+
+/// Automation-related requests should add funds to the Chainlink registry via registry.addFunds
+rule automatedRequests_addFunds_toRegistry(method f) filtered {f -> canRequestStatus(f)} {
+    env e;
+    calldataarg args;
+
+    require link == getLink();
+    require forwarder == getForwarder();
+    require registry == forwarder.getRegistry();
+    uint256 minBalance = registry.getMinBalance(getUpkeepId());
+
+    uint256 balance_before = link.balanceOf(registry);
+
+    // we need to make sure the isAutomation bool is true
+    f(e, args);
+
+    uint256 balance_after = link.balanceOf(registry);
+
+    // can we imply something here => 
+    assert balance_after == balance_before + minBalance;
+
+
+    /// 
+    /// update ghost: g_linkAddedToRegistry += registry.getMinBalance(getUpkeepId());
+    /// assert link.balanceOf(registry) == g_linkAddedToRegistry
+
 }

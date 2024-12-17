@@ -24,4 +24,9 @@ contract Harness is Compliant {
     function noAutomation(address user, bytes memory compliantCalldata) external returns (bytes memory) {
         return abi.encode(user, false, compliantCalldata);
     }
+
+    function performData(address user, bool isCompliant) external returns (bytes memory) {
+        bytes32 requestId = bytes32(uint256(uint160(user)));
+        return abi.encode(requestId, user, isCompliant);
+    }
 }
