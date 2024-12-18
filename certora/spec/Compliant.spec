@@ -54,6 +54,9 @@ definition canRequestStatus(method f) returns bool =
 	f.selector == sig:onTokenTransfer(address,uint256,bytes).selector || 
 	f.selector == sig:requestKycStatus(address,bool,bytes).selector;
 
+definition KYCStatusRequestedEvent() returns bytes32 =
+    to_bytes32(0x526f9e0c9d2f796e9c96170fef78e1b6b8dba50c6518f1101fdd1380113b9095);
+
 /*//////////////////////////////////////////////////////////////
                            FUNCTIONS
 //////////////////////////////////////////////////////////////*/
@@ -79,9 +82,18 @@ persistent ghost mapping(address => bool) g_pendingRequests {
     init_state axiom forall address a. g_pendingRequests[a] == false;
 }
 
-persistent ghost mathint g_manualIncrement {
-    init_state axiom g_manualIncrement == 0;
+// /// @dev for tracking the manual compliant restricted logic's incremented value 
+// persistent ghost mathint g_manualIncrement {
+//     init_state axiom g_manualIncrement == 0;
+// }
+
+ghost mathint g_kycStatusRequestedEvents {
+    init_state axiom g_kycStatusRequestedEvents == 0;
 }
+
+// persistent ghost mathint g_kycStatusRequestFulfilledEvents {
+//     init_state axiom g_kycStatusRequestFulfilledEvents == 0;
+// }
 
 /*//////////////////////////////////////////////////////////////
                              HOOKS
@@ -97,8 +109,14 @@ hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newV
     if (newValue != oldValue) g_pendingRequests[a] = newValue;
 }
 
-hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
-    if (newValue > oldValue) g_manualIncrement = g_manualIncrement + 1;
+// hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
+//     if (newValue > oldValue) g_manualIncrement = g_manualIncrement + 1;
+// }
+
+hook LOG3(uint offset, uint length, bytes32 t0, bytes32 t1, bytes32 t2) {
+    if (t0 == KYCStatusRequestedEvent()) g_kycStatusRequestedEvents = g_kycStatusRequestedEvents + 1;
+    // if (t0 == KYCStatusRequestFulfilled()) g_kycStatusRequestFulfilledEvents = g_kycStatusRequestFulfilledEvents + 1;
+    // g_kycStatusRequestedEvents = g_kycStatusRequestedEvents + 1;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -291,3 +309,14 @@ rule automatedRequests_addFunds_toRegistry(method f) filtered {f -> canRequestSt
     /// assert link.balanceOf(registry) == g_linkAddedToRegistry
 
 }
+
+rule requests_emit_events(method f) filtered {f -> canRequestStatus(f)} {
+    env e;
+    calldataarg args;
+
+    require g_kycStatusRequestedEvents == 0;
+
+    f(e, args);
+
+    assert g_kycStatusRequestedEvents == 1;
+}    
