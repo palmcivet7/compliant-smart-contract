@@ -55,7 +55,16 @@ definition canRequestStatus(method f) returns bool =
 	f.selector == sig:requestKycStatus(address,bool,bytes).selector;
 
 definition KYCStatusRequestedEvent() returns bytes32 =
+// keccak256(abi.encodePacked("KYCStatusRequested(bytes32,address)"))
     to_bytes32(0x526f9e0c9d2f796e9c96170fef78e1b6b8dba50c6518f1101fdd1380113b9095);
+
+definition KYCStatusRequestFulfilledEvent() returns bytes32 =
+// keccak256(abi.encodePacked("KYCStatusRequestFulfilled(bytes32,address,bool)"))
+    to_bytes32(0x0b3bad71afd0d65225e0e2be88b41241bc79ec76b33503ff0ca8fb03e47d9d8d);
+
+definition CompliantCheckPassedEvent() returns bytes32 =
+// keccak256(abi.encodePacked("CompliantCheckPassed()"))
+    to_bytes32(0x55c497259911f7217100faf4dee7dc3263e9067bc83617fa439721b7047574de);
 
 /*//////////////////////////////////////////////////////////////
                            FUNCTIONS
@@ -82,18 +91,38 @@ persistent ghost mapping(address => bool) g_pendingRequests {
     init_state axiom forall address a. g_pendingRequests[a] == false;
 }
 
-// /// @dev for tracking the manual compliant restricted logic's incremented value 
-// persistent ghost mathint g_manualIncrement {
-//     init_state axiom g_manualIncrement == 0;
-// }
+/// @dev for tracking the manual compliant restricted logic's incremented value 
+ghost mathint g_manualIncrement {
+    init_state axiom g_manualIncrement == 0;
+}
 
+/// @dev for tracking the automated compliant restricted logic's incremented value 
+ghost mathint g_automatedIncrement {
+    init_state axiom g_automatedIncrement == 0;
+}
+
+/// @dev track KYCStatusRequested() event emissions
 ghost mathint g_kycStatusRequestedEvents {
     init_state axiom g_kycStatusRequestedEvents == 0;
 }
 
-// persistent ghost mathint g_kycStatusRequestFulfilledEvents {
-//     init_state axiom g_kycStatusRequestFulfilledEvents == 0;
-// }
+/// @dev track KYCStatusRequestFulfilled() event emissions
+ghost mathint g_kycStatusRequestFulfilledEvents {
+    init_state axiom g_kycStatusRequestFulfilledEvents == 0;
+}
+
+/// @dev track CompliantCheckPassed() event emissions
+ghost mathint g_compliantCheckPassedEvents {
+    init_state axiom g_compliantCheckPassedEvents == 0;
+}
+
+ghost bool g_fulfilledRequestIsCompliant {
+    init_state axiom g_fulfilledRequestIsCompliant == false;
+}
+
+persistent ghost mapping(address => bool) g_fulfilledRequestStatus {
+    init_state axiom forall address a. g_fulfilledRequestStatus[a] == false;
+}
 
 /*//////////////////////////////////////////////////////////////
                              HOOKS
@@ -109,14 +138,30 @@ hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newV
     if (newValue != oldValue) g_pendingRequests[a] = newValue;
 }
 
-// hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
-//     if (newValue > oldValue) g_manualIncrement = g_manualIncrement + 1;
-// }
+hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
+    if (newValue > oldValue) g_manualIncrement = g_manualIncrement + 1;
+}
+
+hook Sstore s_automatedIncrement uint256 newValue (uint256 oldValue) {
+    if (newValue > oldValue) g_automatedIncrement = g_automatedIncrement + 1;
+}
 
 hook LOG3(uint offset, uint length, bytes32 t0, bytes32 t1, bytes32 t2) {
-    if (t0 == KYCStatusRequestedEvent()) g_kycStatusRequestedEvents = g_kycStatusRequestedEvents + 1;
-    // if (t0 == KYCStatusRequestFulfilled()) g_kycStatusRequestFulfilledEvents = g_kycStatusRequestFulfilledEvents + 1;
-    // g_kycStatusRequestedEvents = g_kycStatusRequestedEvents + 1;
+    if (t0 == KYCStatusRequestedEvent())
+        g_kycStatusRequestedEvents = g_kycStatusRequestedEvents + 1;
+}
+
+hook LOG4(uint offset, uint length, bytes32 t0, bytes32 t1, bytes32 t2, bytes32 t3) {
+    if (t0 == KYCStatusRequestFulfilledEvent()) 
+        g_kycStatusRequestFulfilledEvents = g_kycStatusRequestFulfilledEvents + 1;
+
+    if (t0 == KYCStatusRequestFulfilledEvent() && t3 != to_bytes32(0)) 
+        g_fulfilledRequestIsCompliant = true;
+}
+
+hook LOG1(uint offset, uint length, bytes32 t0) {
+    if (t0 == CompliantCheckPassedEvent()) 
+        g_compliantCheckPassedEvents = g_compliantCheckPassedEvents + 1;
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -274,42 +319,53 @@ rule withdrawFees_balanceIntegrity() {
     assert balance_after == balance_before - feesToWithdraw;
 }
 
-/// manual incremented value consistency
-/// automated incremented value consistency
-// event consistency:
-/// KYCStatusRequested event is emitted for every request
-/// KYCStatusRequestFulfilled event emitted for fulfilled *AUTOMATED* requests
-/// KYCStatusRequestFulfilled event should emit the correct isCompliant status
-
-/// compliant calldata stored for user should only be there whilst request is pending
-
-/// Automation-related requests should add funds to the Chainlink registry via registry.addFunds
-rule automatedRequests_addFunds_toRegistry(method f) filtered {f -> canRequestStatus(f)} {
+/// @notice automated requests made through onTokenTransfer should add funds to Chainlink registry
+rule onTokenTransfer_automatedRequest_fundsRegistry() {
     env e;
-    calldataarg args;
-
+    address user;
+    uint256 amount;
+    bytes arbitraryData;
+    bytes data;
+    require data == isAutomation(user, arbitraryData);
     require link == getLink();
     require forwarder == getForwarder();
     require registry == forwarder.getRegistry();
     uint256 minBalance = registry.getMinBalance(getUpkeepId());
 
     uint256 balance_before = link.balanceOf(registry);
+    require balance_before + minBalance <= max_uint;
 
-    // we need to make sure the isAutomation bool is true
-    f(e, args);
+    onTokenTransfer(e, user, amount, data);
 
     uint256 balance_after = link.balanceOf(registry);
 
-    // can we imply something here => 
     assert balance_after == balance_before + minBalance;
-
-
-    /// 
-    /// update ghost: g_linkAddedToRegistry += registry.getMinBalance(getUpkeepId());
-    /// assert link.balanceOf(registry) == g_linkAddedToRegistry
-
 }
 
+/// @notice automated requests made with requestKycStatus should add funds to Chainlink registry
+rule requestKycStatus_automatedRequest_fundsRegistry() {
+    env e;
+    address user;
+    bool isAutomation;
+    bytes arbitraryData;
+    require link == getLink();
+    require e.msg.sender != getEverest();
+    require e.msg.sender != currentContract;
+    require isAutomation;
+    require e.msg.sender != forwarder.getRegistry();
+    uint256 minBalance = registry.getMinBalance(getUpkeepId());
+
+    uint256 balance_before = link.balanceOf(registry);
+    require balance_before + minBalance <= max_uint;
+
+    requestKycStatus(e, user, isAutomation, arbitraryData);
+
+    uint256 balance_after = link.balanceOf(registry);
+
+    assert balance_after == balance_before + minBalance;
+}
+
+/// @notice KYCStatusRequested event is emitted for every request
 rule requests_emit_events(method f) filtered {f -> canRequestStatus(f)} {
     env e;
     calldataarg args;
@@ -319,4 +375,60 @@ rule requests_emit_events(method f) filtered {f -> canRequestStatus(f)} {
     f(e, args);
 
     assert g_kycStatusRequestedEvents == 1;
-}    
+}
+
+/// @notice KYCStatusRequestFulfilled event is emitted for every fulfilled *AUTOMATED* request
+rule fulfilledAutomatedRequest_emits_event() {
+    env e;
+    calldataarg args;
+
+    require g_kycStatusRequestFulfilledEvents == 0;
+
+    performUpkeep(e, args);
+
+    assert g_kycStatusRequestFulfilledEvents == 1;
+}
+
+/// @notice CompliantCheckPassed() should only be emitted for compliant users
+rule compliantCheckPassed_emits_for_compliantUser() {
+    env e;
+    calldataarg args;
+
+    require g_compliantCheckPassedEvents == 0;
+    require g_fulfilledRequestIsCompliant == false;
+
+    performUpkeep(e, args);
+
+    assert g_compliantCheckPassedEvents == 1 => g_fulfilledRequestIsCompliant;
+    assert g_compliantCheckPassedEvents == 0 => !g_fulfilledRequestIsCompliant;
+}
+
+/// @notice Compliant restricted state change should only execute on behalf of compliant users
+rule compliantRestrictedLogic_manualExecution() {
+    env e;
+
+    require g_manualIncrement == 0;
+
+    doSomething(e);
+
+    assert g_manualIncrement == 1 => getIsCompliant(e.msg.sender);
+    assert g_manualIncrement == 0 => !getIsCompliant(e.msg.sender);
+}
+
+/// @notice automated compliant restricted state change should only execute on behalf of compliant user
+rule compliantRestrictedLogic_automatedExecution() {
+    env e;
+    calldataarg args;
+    address user; bool isCompliant;
+
+    require g_automatedIncrement == 0;
+
+    bytes performData = performData(user, isCompliant);
+
+    performUpkeep(e, performData);
+
+    assert g_automatedIncrement == 1 => isCompliant;
+    assert g_automatedIncrement == 0 => !isCompliant;
+}
+
+/// compliant calldata stored for user should only be there whilst request is pending
