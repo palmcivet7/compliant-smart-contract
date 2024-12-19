@@ -196,7 +196,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         }
     }
 
-    /// @notice called by Chainlink Automation forwarder if the user has completed KYC
+    /// @notice called by Chainlink Automation forwarder when the request is fulfilled
     /// @dev this function should contain the logic restricted for compliant only users
     /// @param performData encoded bytes contains bytes32 requestId, address of requested user and bool isCompliant
     function performUpkeep(bytes calldata performData) external onlyProxy {
