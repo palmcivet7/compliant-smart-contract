@@ -21,10 +21,6 @@ methods {
     function getFeeWithAutomation() external returns (uint256) envfree;
     function getUpkeepId() external returns (uint256) envfree;
     function owner() external returns (address) envfree;
-    
-    // review these
-    function checkLog(Compliant.Log,bytes) external returns (bool,bytes);
-    function initialize(address) external envfree;
 
     // External contract functions
     function everest.getLatestFulfilledRequest(address) external returns (IEverestConsumer.Request);
@@ -230,10 +226,11 @@ rule checkLogReverts() {
 
 /// @notice initialize should only be callable once and then it should always revert
 rule initializeReverts() {
+    env e;
     calldataarg args;
 
-    initialize(args);
-    initialize@withrevert(args);
+    initialize(e, args);
+    initialize@withrevert(e, args);
     assert lastReverted;
 }
 
@@ -431,4 +428,61 @@ rule compliantRestrictedLogic_automatedExecution() {
     assert g_automatedIncrement == 0 => !isCompliant;
 }
 
-/// compliant calldata stored for user should only be there whilst request is pending
+/// @notice compliant calldata passed to requestKycStatus should only be stored whilst automated request is pending
+rule requestKycStatus_compliantCalldata_storedCorrectly() {
+    env e;
+    address user;
+    bool isAutomation;
+    bytes arbitraryData;
+    require isAutomation;
+
+    Compliant.PendingRequest request_before = getPendingRequest(user);
+    require !request_before.isPending;
+
+    requestKycStatus(e, user, isAutomation, arbitraryData);
+
+    Compliant.PendingRequest request_after = getPendingRequest(user);
+
+    assert request_after.compliantCalldata == arbitraryData => request_after.isPending;
+    assert !request_after.isPending => request_after.compliantCalldata.length == 0;
+}
+
+/// @notice compliant calldata passed to onTokenTransfer should only be stored whilst automated request is pending
+rule onTokenTransfer_compliantCalldata_storedCorrectly() {
+    env e;
+    address user;
+    uint256 amount;
+    bytes arbitraryData;
+    bytes data;
+    require data == isAutomation(user, arbitraryData);
+
+    Compliant.PendingRequest request_before = getPendingRequest(user);
+    require !request_before.isPending;
+
+    onTokenTransfer(e, user, amount, data);
+
+    Compliant.PendingRequest request_after = getPendingRequest(user);
+
+    assert request_after.compliantCalldata == arbitraryData => request_after.isPending;
+    assert !request_after.isPending => request_after.compliantCalldata.length == 0;
+}
+
+/// @notice requests must fund Everest with correct fee amount
+rule requests_fundEverest(method f) filtered {f -> canRequestStatus(f)} {
+    env e;
+    calldataarg args;
+    require link == getLink();
+    require everest == getEverest();
+    require e.msg.sender != everest;
+    uint256 fee = everest.oraclePayment();
+
+    uint256 balance_before = link.balanceOf(everest);
+
+    require balance_before + fee <= max_uint;
+
+    f(e, args);
+
+    uint256 balance_after = link.balanceOf(everest);
+
+    assert balance_after == balance_before + fee;
+}
