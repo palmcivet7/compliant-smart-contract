@@ -25,6 +25,7 @@ contract Harness is Compliant {
         return abi.encode(user, false, compliantCalldata);
     }
 
+    /// @dev create performData to pass to performUpkeep
     function performData(address user, bool isCompliant) external returns (bytes memory) {
         bytes32 requestId = bytes32(uint256(uint160(user)));
         return abi.encode(requestId, user, isCompliant);
