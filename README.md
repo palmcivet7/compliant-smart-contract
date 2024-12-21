@@ -17,7 +17,7 @@ This project demonstrates a compliant smart contract. The `Compliant` contract b
 
 ## Overview
 
-Contract level compliance removes the risk of non-compliance at the lowest level of agreement execution.
+Contract level compliance removes the risk of non-compliance at the lowest level of agreement execution, enabling regulated activity to be available on public chains.
 
 ## How does the compliance work?
 
