@@ -35,7 +35,9 @@ Users can interact with the `Compliant` contract to request the KYC status of an
 
 By making the `Compliant` contract an `ERC677Receiver`, it enables users to request their compliant status in a single `i_link.transferAndCall()` transaction, as opposed to 2 transactions of approving and then requesting.
 
-2. Call `LINK.approve()` on the LINK token address, passing the Compliant contract's address and fee amount. Then call `Compliant.requestKycStatus()`, passing the address to query and instructions on whether to automate a response to the fulfilled compliance check request, and arbitrary data to pass to compliant restricted logic if automated execution is enabled and user is compliant.
+![System Architecture](./diagrams/contract-level-compliance.png)
+
+1. Call `LINK.approve()` on the LINK token address, passing the Compliant contract's address and fee amount. Then call `Compliant.requestKycStatus()`, passing the address to query and instructions on whether to automate a response to the fulfilled compliance check request, and arbitrary data to pass to compliant restricted logic if automated execution is enabled and user is compliant.
 
 ## Compliant.sol
 
