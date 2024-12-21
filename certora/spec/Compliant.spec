@@ -63,55 +63,49 @@ definition CompliantCheckPassedEvent() returns bytes32 =
     to_bytes32(0x55c497259911f7217100faf4dee7dc3263e9067bc83617fa439721b7047574de);
 
 /*//////////////////////////////////////////////////////////////
-                           FUNCTIONS
-//////////////////////////////////////////////////////////////*/
-function getEverestCompliance(address user) returns bool {
-    env e;
-    require everest == getEverest();
-    IEverestConsumer.Request request = everest.getLatestFulfilledRequest(e, user);
-    return request.isKYCUser;
-}
-
-/*//////////////////////////////////////////////////////////////
                              GHOSTS
 //////////////////////////////////////////////////////////////*/
+/// @notice track total fees earned
 persistent ghost mathint g_totalFeesEarned {
     init_state axiom g_totalFeesEarned == 0;
 }
 
+/// @notice track total fees withdrawn
 persistent ghost mathint g_totalFeesWithdrawn {
     init_state axiom g_totalFeesWithdrawn == 0;
 }
 
+/// @notice track address to isPendingRequest
 persistent ghost mapping(address => bool) g_pendingRequests {
     init_state axiom forall address a. g_pendingRequests[a] == false;
 }
 
-/// @dev for tracking the manual compliant restricted logic's incremented value 
+/// @notice track the manual compliant restricted logic's incremented value 
 ghost mathint g_manualIncrement {
     init_state axiom g_manualIncrement == 0;
 }
 
-/// @dev for tracking the automated compliant restricted logic's incremented value 
+/// @notice track the automated compliant restricted logic's incremented value 
 ghost mathint g_automatedIncrement {
     init_state axiom g_automatedIncrement == 0;
 }
 
-/// @dev track KYCStatusRequested() event emissions
+/// @notice track KYCStatusRequested() event emissions
 ghost mathint g_kycStatusRequestedEvents {
     init_state axiom g_kycStatusRequestedEvents == 0;
 }
 
-/// @dev track KYCStatusRequestFulfilled() event emissions
+/// @notice track KYCStatusRequestFulfilled() event emissions
 ghost mathint g_kycStatusRequestFulfilledEvents {
     init_state axiom g_kycStatusRequestFulfilledEvents == 0;
 }
 
-/// @dev track CompliantCheckPassed() event emissions
+/// @notice track CompliantCheckPassed() event emissions
 ghost mathint g_compliantCheckPassedEvents {
     init_state axiom g_compliantCheckPassedEvents == 0;
 }
 
+/// @notice track isCompliant bool emitted by KYCStatusRequestFulfilled()
 ghost bool g_fulfilledRequestIsCompliant {
     init_state axiom g_fulfilledRequestIsCompliant == false;
 }
@@ -123,30 +117,35 @@ persistent ghost mapping(address => bool) g_fulfilledRequestStatus {
 /*//////////////////////////////////////////////////////////////
                              HOOKS
 //////////////////////////////////////////////////////////////*/
-/// @notice everytime the value stored in `s_compliantFeesInLink` changes, we track it in the ghosts
+/// @notice update g_totalFeesEarned and g_totalFeesWithdrawn ghosts when s_compliantFeesInLink changes
 hook Sstore s_compliantFeesInLink uint256 newValue (uint256 oldValue) {
     if (newValue >= oldValue) g_totalFeesEarned = g_totalFeesEarned + newValue - oldValue;
     else g_totalFeesWithdrawn = g_totalFeesWithdrawn + oldValue;
 }
 
-/// @notice track everytime the `PendingRequest.isPending` mapped to a user in `s_pendingRequests` changes
+/// @notice update g_pendingRequests when s_pendingRequests[address].isPending changes
 hook Sstore currentContract.s_pendingRequests[KEY address a].isPending bool newValue (bool oldValue) {
     if (newValue != oldValue) g_pendingRequests[a] = newValue;
 }
 
+/// @notice update g_manualIncrement when s_incrementedValue increments
 hook Sstore s_incrementedValue uint256 newValue (uint256 oldValue) {
     if (newValue > oldValue) g_manualIncrement = g_manualIncrement + 1;
 }
 
+/// @notice update g_automatedIncrement when s_automatedIncrement increments
 hook Sstore s_automatedIncrement uint256 newValue (uint256 oldValue) {
     if (newValue > oldValue) g_automatedIncrement = g_automatedIncrement + 1;
 }
 
+/// @notice increment g_kycStatusRequestedEvents when KYCStatusRequested() emitted
 hook LOG3(uint offset, uint length, bytes32 t0, bytes32 t1, bytes32 t2) {
     if (t0 == KYCStatusRequestedEvent())
         g_kycStatusRequestedEvents = g_kycStatusRequestedEvents + 1;
 }
 
+/// @notice increment g_kycStatusRequestFulfilledEvents when KYCStatusRequestFulfilled emitted
+/// @notice set g_fulfilledRequestIsCompliant to true when fulfilled event isCompliant
 hook LOG4(uint offset, uint length, bytes32 t0, bytes32 t1, bytes32 t2, bytes32 t3) {
     if (t0 == KYCStatusRequestFulfilledEvent()) 
         g_kycStatusRequestFulfilledEvents = g_kycStatusRequestFulfilledEvents + 1;
@@ -155,6 +154,7 @@ hook LOG4(uint offset, uint length, bytes32 t0, bytes32 t1, bytes32 t2, bytes32 
         g_fulfilledRequestIsCompliant = true;
 }
 
+/// @notice increment g_compliantCheckPassedEvents when CompliantCheckPassed() emitted
 hook LOG1(uint offset, uint length, bytes32 t0) {
     if (t0 == CompliantCheckPassedEvent()) 
         g_compliantCheckPassedEvents = g_compliantCheckPassedEvents + 1;
