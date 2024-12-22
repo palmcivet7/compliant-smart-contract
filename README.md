@@ -1,6 +1,6 @@
 # Compliant Smart Contract
 
-This project demonstrates a compliant smart contract. The `Compliant` contract be can interacted with to request the KYC status of an address and automatically execute logic based on the result.
+This project demonstrates a compliant smart contract. The `Compliant` contract can be interacted with to request the KYC status of an address and automatically execute logic based on the result.
 
 ## Table of Contents
 
