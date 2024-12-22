@@ -74,7 +74,7 @@ This project uses [Certora](https://docs.certora.com/en/latest/) for formal veri
 To run the specification, first export your Certora prover key, and then run the configuration file:
 
 ```
-export CERTORAKEY= <YOUR_KEY_HERE>
+export CERTORAKEY=<YOUR_KEY_HERE>
 certoraRun ./certora/conf/Compliant.conf
 ```
 
