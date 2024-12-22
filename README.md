@@ -21,7 +21,7 @@ Contract level compliance removes the risk of non-compliance at the lowest level
 
 ## How does the compliance work?
 
-Requests for the KYC status of an address are made through the Chainlink network to a highly regulated provider of private, contract level and sybil resistant user data.
+Requests for the KYC status of an address are made through the [Chainlink network](https://docs.chain.link/) to a highly [regulated provider](https://developer.everest.org/#chainlink-access-to-everest-oracle) of private, contract level and sybil resistant user data.
 
 The request is for whether the address being queried has been sybil resistantly linked to someone who has completed KYC with that regulated entity or not.
 
