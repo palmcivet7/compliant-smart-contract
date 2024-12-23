@@ -9,7 +9,7 @@ This project demonstrates a compliant smart contract. The `Compliant` contract c
   - [Overview](#overview)
   - [How does the compliance work?](#how-does-the-compliance-work)
   - [User Flow](#user-flow)
-  - [Compliant.sol](#compliantsol)
+  - [Compliant Restricted Functionality](#compliant-restricted-functionality)
   - [Fees](#fees)
     - [Compliant Fee](#compliant-fee)
     - [Everest Fee](#everest-fee)
@@ -25,9 +25,9 @@ Contract level compliance removes the risk of non-compliance at the lowest level
 
 ## How does the compliance work?
 
-Requests for the KYC status of an address are made through the [Chainlink network](https://docs.chain.link/) to a highly [regulated provider](https://developer.everest.org/#chainlink-access-to-everest-oracle) of private, contract level and sybil resistant user data.
+Requests for the KYC status of an address are made through the [Chainlink](https://docs.chain.link/) network to [Everest](https://developer.everest.org/#chainlink-access-to-everest-oracle), a regulated provider of private and sybil resistant user data.
 
-The request is for whether the address being queried has been sybil resistantly linked to someone who has completed KYC with that regulated entity or not.
+The request is for whether the address being queried has been sybil resistantly linked to someone who has completed KYC with the regulated entity or not.
 
 Compliant restricted logic can only be executed on behalf of users who meet this criteria.
 
@@ -37,15 +37,13 @@ Users can interact with the `Compliant` contract to request the KYC status of an
 
 1. Call `LINK.transferAndCall()` on the LINK token address, passing the Compliant contract's address, fee amount, and calldata. The calldata should include the address to query, instructions on whether to automate a response to the fulfilled compliance check request, and arbitrary data to pass to compliant restricted logic if automated execution is enabled and user is compliant. The fee amount to pass can be read from either `Compliant.getFee()` or `Compliant.getFeeWithAutomation()` depending on if the request is intended to use Automation or not.
 
-By making the `Compliant` contract an `ERC677Receiver`, it enables users to request their compliant status in a single `i_link.transferAndCall()` transaction, as opposed to 2 transactions of approving and then requesting. Combining it with the automation option allows the user to request the KYC status and execute subsequent logic based on the immediate result in a single transaction.
-
 ![System Architecture](./diagrams/contract-level-compliance.png)
 
 2. Call `LINK.approve()` on the LINK token address, passing the Compliant contract's address and fee amount. Then call `Compliant.requestKycStatus()`, passing the address to query and instructions on whether to automate a response to the fulfilled compliance check request, and arbitrary data to pass to compliant restricted logic if automated execution is enabled and user is compliant.
 
-## Compliant.sol
+## Compliant Restricted Functionality
 
-This contract contains two practical examples of how a KYC status request can be integrated to restrict functionality to only compliant users.
+The `Compliant` contract contains two practical examples of how a KYC status request can be integrated to restrict functionality to only compliant users.
 
 1. The KYC status of a user can be requested.
 
