@@ -10,6 +10,10 @@ This project demonstrates a compliant smart contract. The `Compliant` contract c
   - [How does the compliance work?](#how-does-the-compliance-work)
   - [User Flow](#user-flow)
   - [Compliant.sol](#compliantsol)
+  - [Fees](#fees)
+    - [Compliant Fee](#compliant-fee)
+    - [Everest Fee](#everest-fee)
+    - [Automation Fee](#automation-fee)
   - [Testing](#testing)
   - [Formal Verification](#formal-verification)
   - [Deployment](#deployment)
@@ -49,7 +53,25 @@ This contract contains two practical examples of how a KYC status request can be
 
 2. Or a KYC status request can be made, with contract functionality immediately executed by Chainlink Log Trigger Automation based on the result.
 
-A fee is taken for each request.
+## Fees
+
+A fee in LINK is taken for each request, covering the following:
+
+- `Compliant` contract fee
+- Everest fee
+- Chainlink Automation fee (if applicable)
+
+### Compliant Fee
+
+This fee is intended as payment for the Owner of the `Compliant` contract. Chainlink Price Feed is used to get the USD value of LINK and calculate how much the `Compliant` contract should receive. Currently it is set to 50c per request, but a lower value or even a configurable value would be more attractive. These accumulated `Compliant` fees could then be periodically distributed amongst holders of a potential `Compliant` native token using Chainlink Automation.
+
+### Everest Fee
+
+This fee is required to pay for requests made to Everest's Chainlink node.
+
+### Automation Fee
+
+This fee is only charged if the request specifies the use of Automation following the requests fulfillment. This value is whatever the minimum balance required to maintain the associated Chainlink Automation Upkeep.
 
 ## Testing
 
@@ -96,3 +118,5 @@ This project uses a `TransparentUpgradeableProxy` (`CompliantProxy`) to store Ch
 This project uses a [forked version of the EverestConsumer](https://github.com/palmcivet7/everest-chainlink-consumer) with updated Chainlink function names, gas optimizations and mislabelling fix in the `IEverestConsumer` interface that would've returned the incorrect compliant status.
 
 A `pendingRequest` in the context of this system refers to requests that are pending automation. This name needs to be reviewed for clarity/confusion reasons as requests that are not pending automation are not set to true in this mapping.
+
+It is currently only possible to pay for `Compliant` requests with the LINK token. A future feature could be payment abstraction allowing the use of payments in other tokens such as native, USDC, etc that then get swapped to LINK.
