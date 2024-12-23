@@ -49,6 +49,8 @@ This contract contains two practical examples of how a KYC status request can be
 
 2. Or a KYC status request can be made, with contract functionality immediately executed by Chainlink Log Trigger Automation based on the result.
 
+A fee is taken for each request.
+
 ## Testing
 
 See coverage with `forge coverage` and `forge coverage --report debug`.
