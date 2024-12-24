@@ -224,8 +224,8 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         /// @dev reset compliantCalldata mapped to user
         if (data.length > 0) {
             s_pendingRequests[user].compliantCalldata = "";
-            // decompress data
-            // data = decompressedData
+            /// @dev decompress the data with LibZip
+            data = data.cdDecompress();
         }
 
         emit KYCStatusRequestFulfilled(requestId, user, isCompliant);
@@ -279,7 +279,9 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         s_pendingRequests[user].isPending = true;
 
         if (compliantCalldata.length > 0) {
-            s_pendingRequests[user].compliantCalldata = compliantCalldata;
+            /// @dev compress the data with LibZip before storing it
+            bytes memory compressedData = compliantCalldata.cdCompress();
+            s_pendingRequests[user].compliantCalldata = compressedData;
         }
     }
 
