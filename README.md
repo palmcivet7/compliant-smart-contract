@@ -69,7 +69,7 @@ This fee is required to pay for requests made to Everest's Chainlink node.
 
 ### Automation Fee
 
-This fee is only charged if the request specifies the use of Automation following the requests fulfillment. This value is whatever the minimum balance required to maintain the associated Chainlink Automation Upkeep.
+This fee is only charged if the request specifies the use of Automation following the requests fulfillment. This value is whatever the minimum balance required to maintain the associated Chainlink Automation Upkeep is.
 
 ## Testing
 
