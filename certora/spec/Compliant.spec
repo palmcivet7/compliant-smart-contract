@@ -33,6 +33,20 @@ methods {
     function isAutomation(address,bytes) external returns (bytes) envfree;
     function noAutomation(address,bytes) external returns (bytes) envfree;
     function performData(address,bool) external returns (bytes) envfree;
+
+    // LibZip summaries
+    function _.cdCompress(bytes memory input) internal => 
+        cvlCdCompress(input) expect (bytes memory);
+    function _.cdDecompress(bytes memory input) internal => 
+        cvlCdDecompress(input) expect (bytes memory);
+}
+
+function cvlCdCompress(bytes data) returns bytes {
+    return data;
+}
+
+function cvlCdDecompress(bytes data) returns bytes {
+    return data;
 }
 
 /*//////////////////////////////////////////////////////////////
