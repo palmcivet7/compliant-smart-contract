@@ -33,20 +33,12 @@ methods {
     function isAutomation(address,bytes) external returns (bytes) envfree;
     function noAutomation(address,bytes) external returns (bytes) envfree;
     function performData(address,bool) external returns (bytes) envfree;
+    // function compress(bytes) external returns (bytes) envfree;
+    // function decompress(bytes) external returns (bytes) envfree;
 
     // LibZip summaries
-    function _.cdCompress(bytes memory input) internal => 
-        cvlCdCompress(input) expect (bytes memory);
-    function _.cdDecompress(bytes memory input) internal => 
-        cvlCdDecompress(input) expect (bytes memory);
-}
-
-function cvlCdCompress(bytes data) returns bytes {
-    return data;
-}
-
-function cvlCdDecompress(bytes data) returns bytes {
-    return data;
+    function _.cdCompress(bytes memory data) internal => compressionSummary(data) expect (bytes memory);
+    function _.cdDecompress(bytes memory data) internal => compressionSummary(data) expect (bytes memory);
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -75,6 +67,24 @@ definition KYCStatusRequestFulfilledEvent() returns bytes32 =
 definition CompliantCheckPassedEvent() returns bytes32 =
 // keccak256(abi.encodePacked("CompliantCheckPassed()"))
     to_bytes32(0x55c497259911f7217100faf4dee7dc3263e9067bc83617fa439721b7047574de);
+
+/*//////////////////////////////////////////////////////////////
+                           FUNCTIONS
+//////////////////////////////////////////////////////////////*/
+/// @notice summarize LibZip.cdCompress() and LibZip.cdDecompress()
+/// @notice we are not verifying the LibZip library so are ok with such a basic mock
+// review - should we be asserting if isPending && data != 0, {PendingRequest.compliantCalldata == compressed(data)} ?
+function compressionSummary(bytes data) returns bytes {
+    return data;
+}
+
+// function cdCompressSummary(bytes data) returns bytes {
+//     return compress(data);
+// }
+
+// function cdDecompressSummary(bytes data) returns bytes {
+//     return decompress(data);
+// }
 
 /*//////////////////////////////////////////////////////////////
                              GHOSTS
@@ -124,6 +134,7 @@ ghost bool g_fulfilledRequestIsCompliant {
     init_state axiom g_fulfilledRequestIsCompliant == false;
 }
 
+// review - unused ghost
 persistent ghost mapping(address => bool) g_fulfilledRequestStatus {
     init_state axiom forall address a. g_fulfilledRequestStatus[a] == false;
 }
@@ -457,7 +468,7 @@ rule requestKycStatus_compliantCalldata_storedCorrectly() {
 
     Compliant.PendingRequest request_after = getPendingRequest(user);
 
-    assert request_after.compliantCalldata == arbitraryData => request_after.isPending;
+    assert request_after.compliantCalldata == compressionSummary(arbitraryData) => request_after.isPending;
     assert !request_after.isPending => request_after.compliantCalldata.length == 0;
 }
 
@@ -477,7 +488,7 @@ rule onTokenTransfer_compliantCalldata_storedCorrectly() {
 
     Compliant.PendingRequest request_after = getPendingRequest(user);
 
-    assert request_after.compliantCalldata == arbitraryData => request_after.isPending;
+    assert request_after.compliantCalldata == compressionSummary(arbitraryData) => request_after.isPending;
     assert !request_after.isPending => request_after.compliantCalldata.length == 0;
 }
 

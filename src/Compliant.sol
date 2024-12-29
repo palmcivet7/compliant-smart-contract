@@ -280,6 +280,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
 
         if (compliantCalldata.length > 0) {
             /// @dev compress the data with LibZip before storing it
+            // review do we want to skip compression to save gas, and assume end user compressed it themselves?
             bytes memory compressedData = compliantCalldata.cdCompress();
             s_pendingRequests[user].compliantCalldata = compressedData;
         }
