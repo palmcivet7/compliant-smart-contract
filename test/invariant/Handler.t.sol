@@ -10,6 +10,7 @@ import {LinkTokenInterface} from "@chainlink/contracts/src/v0.8/shared/interface
 import {IEverestConsumer} from "@everest/contracts/interfaces/IEverestConsumer.sol";
 import {IAutomationRegistryConsumer} from
     "@chainlink/contracts/src/v0.8/automation/interfaces/IAutomationRegistryConsumer.sol";
+import {LibZip} from "@solady/src/utils/LibZip.sol";
 
 contract Handler is Test {
     /*//////////////////////////////////////////////////////////////
@@ -312,7 +313,8 @@ contract Handler is Test {
     function _updateRequestGhosts(address user, bool isAutomation, bytes memory compliantCalldata) internal {
         /// @dev store compliantCalldata in ghost mapping
         if (isAutomation && compliantCalldata.length > 0) {
-            g_requestedAddressToCalldata[user] = compliantCalldata;
+            bytes memory compressedData = LibZip.cdCompress(compliantCalldata);
+            g_requestedAddressToCalldata[user] = compressedData;
         }
 
         /// @dev set request to pending
