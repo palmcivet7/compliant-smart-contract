@@ -31,12 +31,4 @@ contract Harness is Compliant {
         bytes32 requestId = bytes32(uint256(uint160(user)));
         return abi.encode(requestId, user, isCompliant);
     }
-
-    // function compress(bytes memory data) external returns (bytes memory) {
-    //     return LibZip.cdCompress(data);
-    // }
-
-    // function decompress(bytes memory data) external returns (bytes memory) {
-    //     return LibZip.cdDecompress(data);
-    // }
 }

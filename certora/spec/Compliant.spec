@@ -33,8 +33,6 @@ methods {
     function isAutomation(address,bytes) external returns (bytes) envfree;
     function noAutomation(address,bytes) external returns (bytes) envfree;
     function performData(address,bool) external returns (bytes) envfree;
-    // function compress(bytes) external returns (bytes) envfree;
-    // function decompress(bytes) external returns (bytes) envfree;
 
     // LibZip summaries
     function _.cdCompress(bytes memory data) internal => compressionSummary(data) expect (bytes memory);
@@ -73,18 +71,10 @@ definition CompliantCheckPassedEvent() returns bytes32 =
 //////////////////////////////////////////////////////////////*/
 /// @notice summarize LibZip.cdCompress() and LibZip.cdDecompress()
 /// @notice we are not verifying the LibZip library so are ok with such a basic mock
-// review - should we be asserting if isPending && data != 0, {PendingRequest.compliantCalldata == compressed(data)} ?
+// review - if isPending && data != 0, {PendingRequest.compliantCalldata == compressed(data)}
 function compressionSummary(bytes data) returns bytes {
     return data;
 }
-
-// function cdCompressSummary(bytes data) returns bytes {
-//     return compress(data);
-// }
-
-// function cdDecompressSummary(bytes data) returns bytes {
-//     return decompress(data);
-// }
 
 /*//////////////////////////////////////////////////////////////
                              GHOSTS
