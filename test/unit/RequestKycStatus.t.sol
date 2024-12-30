@@ -59,6 +59,7 @@ contract RequestKycStatusTest is BaseTest {
         bytes memory compliantCalldata = abi.encode(1);
 
         uint256 expectedFee = compliant.getFeeWithAutomation();
+
         /// @dev call requestKycStatus
         uint256 actualFee = _requestKycStatus(user, expectedFee, user, true, compliantCalldata);
 
@@ -152,6 +153,7 @@ contract RequestKycStatusTest is BaseTest {
             )
         );
         uint256 actualFee = abi.decode(retData, (uint256));
+
         return actualFee;
     }
 }
