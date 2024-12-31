@@ -12,6 +12,7 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {IERC677Receiver} from "@chainlink/contracts/src/v0.8/shared/interfaces/IERC677Receiver.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {LibZip} from "@solady/src/utils/LibZip.sol";
 
 /// @notice A template contract for requesting and getting the KYC compliant status of an address.
 contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC677Receiver {
@@ -19,6 +20,7 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
                            TYPE DECLARATIONS
     //////////////////////////////////////////////////////////////*/
     using SafeERC20 for LinkTokenInterface;
+    using LibZip for bytes;
 
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
@@ -126,14 +128,21 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     /// @param data encoded data should contain the user address to request the kyc status of, a boolean
     /// indicating whether automation should be used to subsequently execute logic based on the immediate result,
     /// and arbitrary data to be passed to compliant restricted logic
-    function onTokenTransfer(address, /*sender */ uint256 amount, bytes calldata data) external onlyProxy {
+    function onTokenTransfer(
+        address,
+        /* sender */
+        uint256 amount,
+        bytes calldata data
+    ) external onlyProxy {
         if (msg.sender != address(i_link)) revert Compliant__OnlyLinkToken();
 
         (address user, bool isAutomatedRequest, bytes memory compliantCalldata) =
             abi.decode(data, (address, bool, bytes));
 
         uint256 fees = _handleFees(isAutomatedRequest, true);
-        if (amount < fees) revert Compliant__InsufficientLinkTransferAmount(fees);
+        if (amount < fees) {
+            revert Compliant__InsufficientLinkTransferAmount(fees);
+        }
 
         _requestKycStatus(user, isAutomatedRequest, compliantCalldata);
     }
@@ -181,13 +190,17 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
 
             /// @dev revert if request wasn't made by this contract
             address revealer = address(uint160(uint256(log.topics[2])));
-            if (revealer != address(this)) revert Compliant__RequestNotMadeByThisContract();
+            if (revealer != address(this)) {
+                revert Compliant__RequestNotMadeByThisContract();
+            }
 
             (address requestedAddress, IEverestConsumer.Status kycStatus,) =
                 abi.decode(log.data, (address, IEverestConsumer.Status, uint40));
 
             bool isCompliant;
-            if (kycStatus == IEverestConsumer.Status.KYCUser) isCompliant = true;
+            if (kycStatus == IEverestConsumer.Status.KYCUser) {
+                isCompliant = true;
+            }
 
             if (s_pendingRequests[requestedAddress].isPending) {
                 performData = abi.encode(requestId, requestedAddress, isCompliant);
@@ -200,7 +213,9 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
     /// @dev this function should contain the logic restricted for compliant only users
     /// @param performData encoded bytes contains bytes32 requestId, address of requested user and bool isCompliant
     function performUpkeep(bytes calldata performData) external onlyProxy {
-        if (msg.sender != address(i_forwarder)) revert Compliant__OnlyForwarder();
+        if (msg.sender != address(i_forwarder)) {
+            revert Compliant__OnlyForwarder();
+        }
         (bytes32 requestId, address user, bool isCompliant) = abi.decode(performData, (bytes32, address, bool));
 
         s_pendingRequests[user].isPending = false;
@@ -209,6 +224,8 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
         /// @dev reset compliantCalldata mapped to user
         if (data.length > 0) {
             s_pendingRequests[user].compliantCalldata = "";
+            /// @dev decompress the data with LibZip
+            data = data.cdDecompress();
         }
 
         emit KYCStatusRequestFulfilled(requestId, user, isCompliant);
@@ -256,11 +273,16 @@ contract Compliant is ILogAutomation, AutomationBase, OwnableUpgradeable, IERC67
 
     /// @dev Chainlink Automation will only trigger for a true pending request
     function _setPendingRequest(address user, bytes memory compliantCalldata) internal {
-        if (s_pendingRequests[user].isPending) revert Compliant__PendingRequestExists(user);
+        if (s_pendingRequests[user].isPending) {
+            revert Compliant__PendingRequestExists(user);
+        }
         s_pendingRequests[user].isPending = true;
 
         if (compliantCalldata.length > 0) {
-            s_pendingRequests[user].compliantCalldata = compliantCalldata;
+            /// @dev compress the data with LibZip before storing it
+            // review do we want to skip compression to save gas, and assume end user compressed it themselves?
+            bytes memory compressedData = compliantCalldata.cdCompress();
+            s_pendingRequests[user].compliantCalldata = compressedData;
         }
     }
 

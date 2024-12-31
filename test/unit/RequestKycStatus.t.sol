@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {BaseTest, Vm, LinkTokenInterface, Compliant, console2} from "../BaseTest.t.sol";
+import {LibZip} from "@solady/src/utils/LibZip.sol";
 
 /// review these tests - can be refactored further to improve modularity/readability
 contract RequestKycStatusTest is BaseTest {
@@ -58,6 +59,7 @@ contract RequestKycStatusTest is BaseTest {
         bytes memory compliantCalldata = abi.encode(1);
 
         uint256 expectedFee = compliant.getFeeWithAutomation();
+
         /// @dev call requestKycStatus
         uint256 actualFee = _requestKycStatus(user, expectedFee, user, true, compliantCalldata);
 
@@ -84,7 +86,8 @@ contract RequestKycStatusTest is BaseTest {
         bytes memory storedCalldata = pendingRequest.compliantCalldata;
 
         assertTrue(isPending);
-        assertEq(storedCalldata, compliantCalldata);
+        /// @dev decompress storedCalldata
+        assertEq(LibZip.cdDecompress(storedCalldata), compliantCalldata);
         assertEq(linkBalanceAfter + expectedFee, linkBalanceBefore);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
@@ -150,6 +153,7 @@ contract RequestKycStatusTest is BaseTest {
             )
         );
         uint256 actualFee = abi.decode(retData, (uint256));
+
         return actualFee;
     }
 }

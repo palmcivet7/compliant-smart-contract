@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {BaseTest, Vm, LinkTokenInterface, Compliant, console2} from "../BaseTest.t.sol";
 import {MockLinkToken} from "../mocks/MockLinkToken.sol";
+import {LibZip} from "@solady/src/utils/LibZip.sol";
 
 contract OnTokenTransferTest is BaseTest {
     function test_compliant_onTokenTransfer_noAutomation() public {
@@ -68,8 +69,11 @@ contract OnTokenTransferTest is BaseTest {
         bool isPending = pendingRequest.isPending;
         bytes memory storedCalldata = pendingRequest.compliantCalldata;
 
+        /// @dev decompress storedCalldata
+        bytes memory decompressedData = LibZip.cdDecompress(storedCalldata);
+
         assertTrue(isPending);
-        assertEq(storedCalldata, compliantCalldata);
+        assertEq(decompressedData, compliantCalldata);
         assertEq(emittedRequestId, expectedRequestId);
         assertEq(user, emittedUser);
     }

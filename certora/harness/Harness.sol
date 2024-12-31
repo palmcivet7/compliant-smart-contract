@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Compliant} from "../../src/Compliant.sol";
 import {IEverestConsumer} from "lib/everest-chainlink-consumer/contracts/EverestConsumer.sol";
+import {LibZip} from "@solady/src/utils/LibZip.sol";
 
 contract Harness is Compliant {
     /*//////////////////////////////////////////////////////////////
