@@ -18,6 +18,7 @@ This project demonstrates a compliant smart contract. The `Compliant` contract c
   - [Formal Verification](#formal-verification)
   - [Deployment](#deployment)
   - [Additional Comments](#additional-comments)
+  - [Archives](#archives)
 
 ## Overview
 
@@ -118,3 +119,11 @@ This project uses a [forked version of the EverestConsumer](https://github.com/p
 A `pendingRequest` in the context of this system refers to requests that are pending automation. This name needs to be reviewed for clarity/confusion reasons as requests that are not pending automation are not set to true in this mapping.
 
 It is currently only possible to pay for `Compliant` requests with the LINK token. A future feature could be payment abstraction allowing the use of payments in other tokens such as native, USDC, etc that then get swapped to LINK.
+
+## Archives
+
+Each significant iteration of this project has been archived in its own branch.
+
+- **2024-11-30** - Initial implementation with 100% unit coverage
+- **2024-12-23** - Foundry invariant tests and Certora
+- **2024-12-31** - Calldata compression with Solady.LibZip
